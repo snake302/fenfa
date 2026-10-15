@@ -1,49 +1,49 @@
-# Клиентский каталог и вход по паролю
+# Client catalog and password login
 
-Главная страница `/` показывает все опубликованные продукты. Карточка открывает `/products/<slug>`; со страницы продукта можно вернуться к списку по ссылке All products. Неопубликованные продукты и платформы в каталоге не отображаются.
+The homepage `/` lists all published products. Each card opens `/products/<slug>`; the All products link on the product page returns to the catalog. Unpublished products and platforms are excluded from the catalog.
 
-## Включение входа
+## Enabling password login
 
-Задайте отдельную переменную окружения при запуске сервера или контейнера:
+Set a dedicated environment variable when starting the server or container:
 
 ```dotenv
-FENFA_CLIENT_PASSWORD=ваш-длинный-случайный-пароль
+FENFA_CLIENT_PASSWORD=your-long-random-password
 ```
 
-Пароль общий для посетителей клиентского сайта. Он не связан с `FENFA_ADMIN_TOKEN` и `FENFA_UPLOAD_TOKEN` и не даёт прав администратора. Переменная читается сервером во время запуска: пересобирать фронтенд при изменении пароля не требуется, нужно перезапустить сервер с новым окружением.
+The password is shared by visitors to the client site. It is independent of `FENFA_ADMIN_TOKEN` and `FENFA_UPLOAD_TOKEN` and does not grant administrator privileges. The server reads the variable at startup: changing the password requires restarting the server with the updated environment, but does not require rebuilding the frontend.
 
-Если переменная отсутствует, можно указать `auth.client_password` в `config.json`. Если пароль не задан или явно передана пустая переменная `FENFA_CLIENT_PASSWORD=`, сохраняется открытый доступ. Сам по себе файл `.env` сервер не читает: окружение должен передать способ запуска, например Docker Compose через `env_file`.
+If the variable is absent, you can set `auth.client_password` in `config.json`. Access remains public if no password is configured or if an explicitly empty variable, `FENFA_CLIENT_PASSWORD=`, is supplied. The server does not read `.env` files directly: the launcher must supply the environment, for example through Docker Compose's `env_file` setting.
 
-## Поведение клиента
+## Client behavior
 
-Без входа при открытии страницы продукта посетитель перенаправляется на `/`, где видит форму пароля. После успешного входа появляется каталог, из которого можно открыть любой опубликованный продукт. В каталоге доступна кнопка Sign out.
+Visitors who open a product page without signing in are redirected to `/`, which displays the password form. After a successful login, the catalog appears and visitors can open any published product. The catalog includes a Sign out button.
 
-Сессия действует семь дней и хранится в cookie `fenfa_client_session` с `HttpOnly`, `SameSite=Lax` и `Secure` при HTTPS. В базе хранится только хеш случайного токена, связанный с текущим паролем. Сессия сохраняется после перезапуска при сохранении базы данных и пароля. Выход отзывает текущую сессию. Смена пароля делает недействительными все ранее выданные сессии и разрешения скачивания.
+Sessions last seven days and use the `fenfa_client_session` cookie with `HttpOnly`, `SameSite=Lax`, and `Secure` over HTTPS. The database stores only a hash of the random token, tied to the current password. Sessions survive restarts as long as the database and password are preserved. Signing out revokes the current session. Changing the password invalidates all previously issued sessions and download grants.
 
-Для рабочего сайта используйте HTTPS. При завершении TLS на reverse proxy передавайте `X-Forwarded-Proto: https`, как в примере nginx в репозитории.
+Use HTTPS in production. If TLS terminates at a reverse proxy, forward `X-Forwarded-Proto: https`, as shown in the repository's nginx example.
 
-## Защищённые маршруты
+## Protected routes
 
-Защищены страницы `/products/*` и старые `/apps/*`, клиентские API каталога и продукта, иконки, события, запрос профиля/статуса UDID, скачивание `/d/*` и iOS manifest `/ios/*/manifest.plist`. Страницы без сессии перенаправляют на `/`, клиентские API возвращают HTTP 401. При истечении сессии на странице продукта клиент также возвращает посетителя на `/`.
+Protection covers `/products/*` and legacy `/apps/*` pages, client catalog and product APIs, icons, events, UDID profile and status requests, `/d/*` downloads, and iOS manifests at `/ios/*/manifest.plist`. Page requests without a session redirect to `/`; client APIs return HTTP 401. If a session expires while a product page is open, the client also redirects the visitor to `/`.
 
-Главная страница, статические ресурсы интерфейса и `/healthz` остаются доступными без входа. Админка использует прежнюю независимую авторизацию.
+The homepage, static UI assets, and `/healthz` remain accessible without signing in. The admin interface retains its independent authentication.
 
-При включённой защите callback iOS принимается только с nonce, ранее выданным при запросе профиля после входа. Cookie браузера для системного callback не требуется.
+When protection is enabled, iOS callbacks are accepted only with a nonce previously issued by an authenticated profile request. The system callback does not require the browser's cookie.
 
-## Скачивание и установка iOS
+## Downloads and iOS installation
 
-После входа API выдаёт для каждой сборки временное разрешение в параметре `access_token`. Оно действует один час и разрешает получить только manifest и файл соответствующего релиза. Это позволяет системному установщику iOS скачивать приложение без cookie Safari. Manifest переносит разрешение в URL IPA. Подмена релиза, изменение токена и просроченный токен не дают доступа.
+After login, the API issues a temporary grant for each build through the `access_token` parameter. It lasts one hour and permits access only to the corresponding release's manifest and file. This allows the iOS system installer to download the app without Safari cookies. The manifest carries the grant into the IPA URL. A different release, a modified token, or an expired token does not grant access.
 
-Временную ссылку можно использовать до истечения часа, в том числе после выхода из клиентской сессии. Она не открывает каталог или другие продукты. Не помещайте общий клиентский пароль в URL.
+A temporary link remains usable until its one-hour expiry, including after signing out of the client session. It does not grant access to the catalog or other products. Do not put the shared client password in a URL.
 
-Защита распространяется на запросы, обслуживаемые Fenfa. При хранении в S3/R2 скачивание перенаправляет на настроенный публичный URL объекта; доступ к уже известному URL самого хранилища определяется его настройками, а не клиентской сессией Fenfa.
+Protection applies to requests served by Fenfa. With S3/R2 storage, downloads redirect to the configured public object URL; access to a known storage URL is controlled by the storage configuration rather than the Fenfa client session.
 
-## API входа
+## Login API
 
-| Метод и путь | Назначение |
+| Method and path | Purpose |
 |---|---|
-| `GET /api/client/session` | Возвращает `enabled` и `authenticated` |
-| `POST /api/client/login` | Принимает JSON `{"password":"..."}`, создаёт cookie сессии |
-| `POST /api/client/logout` | Отзывает текущую сессию и удаляет cookie |
+| `GET /api/client/session` | Returns `enabled` and `authenticated` |
+| `POST /api/client/login` | Accepts JSON `{"password":"..."}` and sets the session cookie |
+| `POST /api/client/logout` | Revokes the current session and clears the cookie |
 
-Неверный пароль возвращает HTTP 401. Для входа требуется `Content-Type: application/json`; размер тела ограничен 4 КиБ. Лимит попыток: 10 в минуту на IP и 100 в минуту суммарно на экземпляр сервера; при превышении возвращается HTTP 429 с `Retry-After`. Пароль и токен сессии не возвращаются в JSON и не сохраняются в `localStorage`.
+An incorrect password returns HTTP 401. Login requires `Content-Type: application/json`; the request body is limited to 4 KiB. Login attempts are limited to 10 per minute per IP and 100 per minute across each server instance; exceeding either limit returns HTTP 429 with `Retry-After`. The password and session token are never returned in JSON or stored in `localStorage`.
