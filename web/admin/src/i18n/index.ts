@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue'
+import { ref, computed, watchEffect } from 'vue'
 import zh from './zh'
 import en from './en'
 
@@ -12,9 +12,30 @@ const messages: Record<Locale, Messages> = {
 
 const LOCALE_KEY = 'fenfa_admin_locale'
 
-// Get saved locale or default to Chinese
-const savedLocale = localStorage.getItem(LOCALE_KEY) as Locale | null
-const currentLocale = ref<Locale>(savedLocale || 'zh')
+function isLocale(value: unknown): value is Locale {
+  return value === 'en' || value === 'zh'
+}
+
+function initialLocale(): Locale {
+  try {
+    const savedLocale = localStorage.getItem(LOCALE_KEY)
+    if (isLocale(savedLocale)) return savedLocale
+  } catch {
+    // Browser preferences still work when storage is unavailable.
+  }
+
+  for (const language of [...(navigator.languages || []), navigator.language]) {
+    const locale = language?.toLowerCase().split('-')[0]
+    if (isLocale(locale)) return locale
+  }
+  return 'en'
+}
+
+const currentLocale = ref<Locale>(initialLocale())
+
+watchEffect(() => {
+  document.documentElement.lang = currentLocale.value
+})
 
 export function useI18n() {
   const locale = computed(() => currentLocale.value)
