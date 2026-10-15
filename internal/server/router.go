@@ -16,6 +16,7 @@ func RegisterRoutes(g *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	g.GET("/healthz", handlers.Healthz(db))
 
 	// Public HTML + JSON
+	g.GET("/api/products", handlers.PublicProducts(db, cfg))
 	g.GET("/apps/:appID", func(c *gin.Context) {
 		handlers.LegacyAppRedirect(db)(c)
 	})
@@ -116,9 +117,13 @@ func RegisterRoutes(g *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	admin.GET("/exports/events.csv", handlers.ExportEvents(db))
 	admin.GET("/exports/ios_devices.csv", handlers.ExportIOSDevices(db))
 
-	// Template test route
+	// Client product catalog
 	g.GET("/", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "app.html", gin.H{"Title": "fenfa", "Message": "It works"})
+		if cfg.Server.DevProxyFront != "" {
+			c.Redirect(http.StatusTemporaryRedirect, cfg.Server.DevProxyFront+"/")
+			return
+		}
+		c.HTML(http.StatusOK, "app.html", gin.H{"Title": "Fenfa", "Message": ""})
 	})
 
 	// Admin HTML page (public page; exports under /admin/exports require token)

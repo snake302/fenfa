@@ -7,6 +7,11 @@ function detectLanguage(): 'zh' | 'en' {
 const translations = {
   zh: {
     loading: '加载中...',
+    catalog: {
+      title: '所有产品',
+      subtitle: '选择产品以查看可用版本并安装到您的设备。',
+      empty: '暂无已发布的产品。'
+    },
     error: {
       title: '页面暂时不可用',
       loadFailed: '加载产品信息失败'
@@ -18,6 +23,9 @@ const translations = {
       recommended: '推荐'
     },
     actions: {
+      allProducts: '所有产品',
+      openProduct: '查看产品',
+      retry: '重试',
       install: '安装',
       installing: '正在安装...',
       download: '下载',
@@ -45,6 +53,11 @@ const translations = {
   },
   en: {
     loading: 'Loading...',
+    catalog: {
+      title: 'All products',
+      subtitle: 'Choose a product to view available versions and install it on your device.',
+      empty: 'No products have been published yet.'
+    },
     error: {
       title: 'This page is temporarily unavailable',
       loadFailed: 'Failed to load product information'
@@ -56,6 +69,9 @@ const translations = {
       recommended: 'Recommended'
     },
     actions: {
+      allProducts: 'All products',
+      openProduct: 'Open product',
+      retry: 'Try again',
       install: 'Install',
       installing: 'Installing...',
       download: 'Download',

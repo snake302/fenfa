@@ -18,6 +18,46 @@ type publicDomains struct {
 	DownloadBase string
 }
 
+// PublicProducts lists published products for the client catalog.
+func PublicProducts(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var products []store.Product
+		if err := db.Where("published = ?", true).Order("name asc, id asc").Find(&products).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": gin.H{"code": "DATABASE_ERROR", "message": "failed to load products"}})
+			return
+		}
+		ids := make([]string, 0, len(products))
+		for _, product := range products {
+			ids = append(ids, product.ID)
+		}
+		platforms := make(map[string][]string)
+		if len(ids) > 0 {
+			var variants []store.Variant
+			if err := db.Select("product_id", "platform").Distinct().Where("product_id IN ? AND published = ?", ids, true).Order("platform asc").Find(&variants).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": gin.H{"code": "DATABASE_ERROR", "message": "failed to load platforms"}})
+				return
+			}
+			for _, variant := range variants {
+				platforms[variant.ProductID] = append(platforms[variant.ProductID], variant.Platform)
+			}
+		}
+		domains := resolvePublicDomains(c, db, cfg)
+		items := make([]gin.H, 0, len(products))
+		for _, product := range products {
+			available := platforms[product.ID]
+			if available == nil {
+				available = []string{}
+			}
+			items = append(items, gin.H{
+				"id": product.ID, "name": product.Name, "description": product.Description,
+				"icon_url": productIconURL(product, domains.Primary), "platforms": available,
+				"url": "/products/" + url.PathEscape(productPathKey(product)),
+			})
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true, "data": gin.H{"products": items}})
+	}
+}
+
 // ProductDetail returns the distribution page with the product's title.
 func ProductDetail(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {

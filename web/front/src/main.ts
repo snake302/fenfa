@@ -1,6 +1,8 @@
 import { computed, createApp, nextTick, onMounted, reactive, ref } from 'vue'
 import QRCode from 'qrcode'
 import { useI18n } from './i18n'
+import HomePage from './HomePage'
+import { platformLabel } from './platform'
 import './style.css'
 
 type Platform = 'ios' | 'android' | 'macos' | 'windows' | 'linux'
@@ -55,17 +57,6 @@ function detectClientPlatform(): Platform | '' {
   if (ua.includes('windows')) return 'windows'
   if (ua.includes('linux')) return 'linux'
   return ''
-}
-
-function platformLabel(platform: string): string {
-  const labels: Record<string, string> = {
-    ios: 'iOS',
-    android: 'Android',
-    macos: 'macOS',
-    windows: 'Windows',
-    linux: 'Linux'
-  }
-  return labels[platform] || platform
 }
 
 const App = {
@@ -340,6 +331,7 @@ const App = {
     </div>
 
     <div v-else-if="productData" class="product-page">
+      <a href="/" class="back-link">← {{ t.actions.allProducts }}</a>
       <section class="hero-card">
         <div class="hero-copy">
           <div class="hero-kicker">{{ routeType === 'product' ? t.hero.productCenter : t.hero.legacyPage }}</div>
@@ -449,4 +441,4 @@ const App = {
   </div>`
 }
 
-createApp(App).mount('#app')
+createApp(location.pathname === '/' ? HomePage : App).mount('#app')
