@@ -188,6 +188,7 @@ const App = {
       }
 
       productData.value = payload.data as ProductData
+      document.title = productData.value.product.name
 
       for (const variant of productData.value.variants) {
         const preferred = variant.releases.find((release) => release.id === selectedReleaseID) || variant.latest_release || variant.releases[0] || null

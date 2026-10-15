@@ -18,11 +18,15 @@ type publicDomains struct {
 	DownloadBase string
 }
 
-// ProductDetail returns the shared shell page for product distribution.
+// ProductDetail returns the distribution page with the product's title.
 func ProductDetail(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		title := "Modern distribution"
+		if product, err := findProductForRequest(db, c); err == nil && product.Published {
+			title = product.Name
+		}
 		c.HTML(http.StatusOK, "app.html", gin.H{
-			"Title":   "Modern distribution",
+			"Title":   title,
 			"Message": "",
 		})
 	}
