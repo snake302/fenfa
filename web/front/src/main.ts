@@ -1,4 +1,4 @@
-import { computed, createApp, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, createApp, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import QRCode from 'qrcode'
 import { useI18n } from './i18n'
 import HomePage from './HomePage'
@@ -73,6 +73,7 @@ const App = {
     const pathParts = location.pathname.split('/').filter(Boolean)
     const routeType = 'product'
     const resourceID = pathParts[1] || ''
+    let refreshInFlight: Promise<void> | null = null
 
     const sortedVariants = computed(() => {
       const items = [...(productData.value?.variants || [])]
@@ -157,7 +158,7 @@ const App = {
           const params = new URLSearchParams()
           if (nonce) params.set('nonce', nonce)
           params.set('variant', variant.id)
-          const res = await fetch(`/udid/status?${params}`)
+          const res = await fetch(`/udid/status?${params}`, { cache: 'no-store' })
           const payload = await res.json()
           udidBound[variant.id] = !!payload?.data?.bound
         } catch {
@@ -169,7 +170,7 @@ const App = {
     async function fetchData() {
       const selectedReleaseID = new URLSearchParams(location.search).get('r')
       const endpoint = `/api/products/${resourceID}`
-      const res = await fetch(endpoint + (selectedReleaseID ? `?r=${encodeURIComponent(selectedReleaseID)}` : ''))
+      const res = await fetch(endpoint + (selectedReleaseID ? `?r=${encodeURIComponent(selectedReleaseID)}` : ''), { cache: 'no-store' })
       if (res.status === 401) {
         location.replace('/')
         return
@@ -183,10 +184,12 @@ const App = {
       }
 
       productData.value = payload.data as ProductData
+      error.value = ''
       document.title = productData.value.product.name
 
       for (const variant of productData.value.variants) {
-        const preferred = variant.releases.find((release) => release.id === selectedReleaseID) || variant.latest_release || variant.releases[0] || null
+        const preferredID = selectedReleaseByVariant[variant.id]?.id || selectedReleaseID
+        const preferred = variant.releases.find((release) => release.id === preferredID) || variant.latest_release || variant.releases[0] || null
         selectedReleaseByVariant[variant.id] = preferred
       }
 
@@ -194,6 +197,26 @@ const App = {
       await nextTick()
       await renderQRCode()
       await fetchUDIDStatuses()
+    }
+
+    function refreshProduct(): Promise<void> {
+      if (!refreshInFlight) {
+        refreshInFlight = fetchData().catch(() => {
+          if (!productData.value) {
+            error.value = t.value.error.loadFailed
+            loading.value = false
+          }
+        }).finally(() => { refreshInFlight = null })
+      }
+      return refreshInFlight
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') void refreshProduct()
+    }
+
+    function handlePageShow(event: PageTransitionEvent) {
+      if (event.persisted) void refreshProduct()
     }
 
     async function renderQRCode() {
@@ -298,13 +321,15 @@ const App = {
     }
 
     onMounted(async () => {
-      try {
-        await fetchData()
-        await logVisit()
-      } catch {
-        error.value = t.value.error.loadFailed
-        loading.value = false
-      }
+      document.addEventListener('visibilitychange', handleVisibilityChange)
+      window.addEventListener('pageshow', handlePageShow)
+      await refreshProduct()
+      await logVisit()
+    })
+
+    onUnmounted(() => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('pageshow', handlePageShow)
     })
 
     return {

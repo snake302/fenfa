@@ -341,7 +341,7 @@ func TestClientPagesReferenceVersionedEmbeddedAssets(t *testing.T) {
 	g.StaticFS("/static/front", http.FS(web.Front()))
 	g.StaticFS("/static/admin", http.FS(web.Admin()))
 	cookie := clientLogin(t, g)
-	pattern := regexp.MustCompile(`(?:src|href)="(/static/(?:front|admin)/(?:app\.js|style\.css)\?v=[a-f0-9]{16})"`)
+	pattern := regexp.MustCompile(`(?:src|href)="(/static/(?:front|admin)/[a-f0-9]{16}/(?:app\.js|style\.css))"`)
 	for _, path := range []string{"/", "/products/client-product", "/admin"} {
 		w := clientRequest(g, "GET", path, "", cookie)
 		matches := pattern.FindAllStringSubmatch(w.Body.String(), -1)
@@ -349,8 +349,31 @@ func TestClientPagesReferenceVersionedEmbeddedAssets(t *testing.T) {
 			t.Fatalf("%s must reference versioned script and stylesheet: %d %s", path, w.Code, w.Body.String())
 		}
 		for _, match := range matches {
-			if asset := clientRequest(g, "GET", match[1], "", nil); asset.Code != http.StatusOK {
+			asset := clientRequest(g, "GET", match[1], "", nil)
+			if asset.Code != http.StatusOK {
 				t.Fatalf("versioned login asset unavailable: %s returned %d", match[1], asset.Code)
+			}
+			// Vite's split chunks can import ../app.js. It must resolve to the
+			// exact entry URL, otherwise the browser executes the app a second time.
+			if strings.HasSuffix(match[1], "/app.js") {
+				entryURL, err := url.Parse(match[1])
+				if err != nil {
+					t.Fatal(err)
+				}
+				chunks := regexp.MustCompile(`assets/[A-Za-z0-9_.-]+\.js`).FindAllString(asset.Body.String(), -1)
+				for _, chunk := range chunks {
+					chunkURL := entryURL.ResolveReference(&url.URL{Path: chunk})
+					chunkResponse := clientRequest(g, "GET", chunkURL.String(), "", nil)
+					if chunkResponse.Code != http.StatusOK {
+						t.Fatalf("versioned chunk unavailable: %s returned %d", chunkURL, chunkResponse.Code)
+					}
+					if strings.Contains(chunkResponse.Body.String(), `"../app.js"`) {
+						importURL := chunkURL.ResolveReference(&url.URL{Path: "../app.js"})
+						if importURL.String() != entryURL.String() {
+							t.Fatalf("chunk imports a different entry URL: %s != %s", importURL, entryURL)
+						}
+					}
+				}
 			}
 		}
 	}
