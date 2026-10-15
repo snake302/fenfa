@@ -7,7 +7,6 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -214,25 +213,6 @@ func doUpload(c *gin.Context, db *gorm.DB, cfg *config.Config, file *multipart.F
 		}(release.ID, destPath)
 	}
 
-	// Optional: save app icon if provided
-	if iconB64 := p.IconBase64; iconB64 != "" {
-		// strip data URL prefix
-		if idx := strings.Index(iconB64, "base64,"); idx >= 0 {
-			iconB64 = iconB64[idx+7:]
-		}
-		if data, err := base64.StdEncoding.DecodeString(iconB64); err == nil && len(data) > 0 {
-			// ensure parent dir exists (uploads/{product.ID})
-			_ = os.MkdirAll(filepath.Join("uploads", p.ProductID), 0o755)
-			iconPath := filepath.ToSlash(filepath.Join("uploads", p.ProductID, "icon.png"))
-			if writeErr := os.WriteFile(iconPath, data, 0o644); writeErr == nil {
-				_ = db.Model(&store.Product{}).Where("id = ?", p.ProductID).Update("icon_path", iconPath).Error
-				if p.LegacyAppID != "" {
-					_ = db.Model(&store.App{}).Where("id = ?", p.LegacyAppID).Update("icon_path", iconPath).Error
-				}
-			}
-		}
-	}
-
 	// If S3 mode, upload file to S3/R2
 	if storageType == "s3" && settings.S3Endpoint != "" && settings.S3Bucket != "" && settings.S3AccessKey != "" && settings.S3SecretKey != "" {
 		s3c := s3client.NewClient(settings.S3Endpoint, settings.S3Bucket, settings.S3AccessKey, settings.S3SecretKey)
@@ -256,6 +236,8 @@ func doUpload(c *gin.Context, db *gorm.DB, cfg *config.Config, file *multipart.F
 		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": gin.H{"code": "DB", "message": err.Error()}})
 		return
 	}
+	// Extract icons only after the build has been stored successfully.
+	saveUploadIcon(db, p, destPath)
 	_ = db.Create(&store.Event{Type: "upload", AppID: p.LegacyAppID, VariantID: p.VariantID, ReleaseID: release.ID, IP: c.ClientIP(), UA: c.Request.UserAgent()}).Error
 
 	// meta.json snapshot (local storage only)

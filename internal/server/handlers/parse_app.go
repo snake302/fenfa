@@ -31,6 +31,7 @@ import (
 	"github.com/iineva/bom/pkg/asset"
 	"github.com/srwiley/oksvg"
 	"github.com/srwiley/rasterx"
+	_ "golang.org/x/image/webp"
 	"howett.net/plist"
 )
 
@@ -194,6 +195,15 @@ func parseAPK(file *multipart.FileHeader) (gin.H, error) {
 }
 
 func extractAPKIconFromPathCandidates(apkPath, iconRef string) (string, bool) {
+	zr, err := zip.OpenReader(apkPath)
+	if err != nil {
+		return "", false
+	}
+	defer zr.Close()
+	return extractAPKIconCandidates(zr, iconRef)
+}
+
+func extractAPKIconCandidates(zr *zip.ReadCloser, iconRef string) (string, bool) {
 	if iconRef == "" {
 		return "", false
 	}
@@ -223,12 +233,6 @@ func extractAPKIconFromPathCandidates(apkPath, iconRef string) (string, bool) {
 		cands = append(cands, "res/drawable/"+base+ext, "res/mipmap/"+base+ext)
 	}
 
-	zr, err := zip.OpenReader(apkPath)
-	if err != nil {
-		return "", false
-	}
-	defer zr.Close()
-
 	for _, cand := range cands {
 		for _, f := range zr.File {
 			if f.Name == cand {
@@ -257,7 +261,10 @@ func extractAPKIconHeuristic(apkPath string) string {
 		return ""
 	}
 	defer zr.Close()
+	return extractAPKIconFromZip(zr)
+}
 
+func extractAPKIconFromZip(zr *zip.ReadCloser) string {
 	type cand struct {
 		name string
 		size uint64
@@ -339,8 +346,8 @@ func extractAPKIconHeuristic(apkPath string) string {
 				}
 				b, _ := io.ReadAll(rc)
 				rc.Close()
-				img, _, err := image.Decode(bytes.NewReader(b))
-				if err != nil {
+				img := decodeIconImage(b)
+				if img == nil {
 					continue
 				}
 				w := img.Bounds().Dx()
@@ -392,8 +399,8 @@ func extractAPKIconHeuristic(apkPath string) string {
 				}
 				b, _ := io.ReadAll(rc)
 				rc.Close()
-				img, _, err := image.Decode(bytes.NewReader(b))
-				if err != nil {
+				img := decodeIconImage(b)
+				if img == nil {
 					continue
 				}
 				w := img.Bounds().Dx()
@@ -1053,22 +1060,31 @@ func findImageByBaseInZip(zr *zip.ReadCloser, base string) string {
 }
 
 func extractIPAIcon(zr *zip.Reader, appDir string, m map[string]interface{}) string {
-	// Try CFBundleIcons > CFBundlePrimaryIcon > CFBundleIconFiles
-	if icons, ok := m["CFBundleIcons"].(map[string]interface{}); ok {
-		if prim, ok := icons["CFBundlePrimaryIcon"].(map[string]interface{}); ok {
-			if files, ok := prim["CFBundleIconFiles"].([]interface{}); ok {
-				cands := []string{}
-				for _, it := range files {
-					if name, ok := it.(string); ok {
-						cands = append(cands,
-							name+".png", name+"@2x.png", name+"@3x.png",
-						)
-					}
-				}
-				if s := findIPAIconByNames(zr, appDir, cands); s != "" {
-					return s
+	// Prefer explicitly declared primary icons, including legacy and iPad plists.
+	groups := []map[string]interface{}{}
+	for _, key := range []string{"CFBundleIcons", "CFBundleIcons~ipad"} {
+		if icons, ok := m[key].(map[string]interface{}); ok {
+			if primary, ok := icons["CFBundlePrimaryIcon"].(map[string]interface{}); ok {
+				groups = append(groups, primary)
+			}
+		}
+	}
+	groups = append(groups, m)
+	for _, group := range groups {
+		var names []string
+		if files, ok := group["CFBundleIconFiles"].([]interface{}); ok {
+			for _, file := range files {
+				if name, ok := file.(string); ok {
+					base := strings.TrimSuffix(name, ".png")
+					names = append(names, base+"@3x.png", base+"@2x.png", base+".png")
 				}
 			}
+		}
+		if name, ok := group["CFBundleIconFile"].(string); ok {
+			names = append(names, name, strings.TrimSuffix(name, ".png")+".png")
+		}
+		if icon := findIPAIconByNames(zr, appDir, names); icon != "" {
+			return icon
 		}
 	}
 	// Fallback: search common names
@@ -1078,15 +1094,19 @@ func extractIPAIcon(zr *zip.Reader, appDir string, m map[string]interface{}) str
 	}
 	// Last resort: any png containing "appicon" or "icon"
 	cands := []string{}
+	sizes := map[string]uint64{}
 	for _, f := range zr.File {
-		if strings.HasPrefix(f.Name, appDir+"/") && strings.HasSuffix(strings.ToLower(f.Name), ".png") {
+		if filepath.Dir(f.Name) == appDir && strings.HasSuffix(strings.ToLower(f.Name), ".png") {
 			low := strings.ToLower(filepath.Base(f.Name))
 			if strings.Contains(low, "appicon") || strings.HasPrefix(low, "icon") {
 				cands = append(cands, f.Name)
+				sizes[f.Name] = f.UncompressedSize64
 			}
 		}
 	}
-	sort.Slice(cands, func(i, j int) bool { return len(cands[i]) < len(cands[j]) })
+	sort.SliceStable(cands, func(i, j int) bool {
+		return sizes[cands[i]] > sizes[cands[j]]
+	})
 	for _, name := range cands {
 		if s := readZipImageBase64(zr, name); s != "" {
 			return s
@@ -1111,13 +1131,7 @@ func findIPAIconByNames(zr *zip.Reader, appDir string, names []string) string {
 func readZipImageBase64(zr *zip.Reader, name string) string {
 	for _, f := range zr.File {
 		if f.Name == name {
-			rc, err := f.Open()
-			if err != nil {
-				return ""
-			}
-			b, _ := io.ReadAll(rc)
-			rc.Close()
-			return imageToBase64(b)
+			return imageToBase64(readIconEntry(f, maxIconBytes))
 		}
 	}
 	return ""
@@ -1137,22 +1151,19 @@ func extractIPAIconFromAssetsCar(zr *zip.Reader, appDir string, m map[string]int
 		return ""
 	}
 
-	rc, err := car.Open()
-	if err != nil {
-		return ""
-	}
-	defer rc.Close()
-	data, err := io.ReadAll(rc)
-	if err != nil {
+	data := readIconEntry(car, maxIconResourceBytes)
+	if len(data) == 0 {
 		return ""
 	}
 
 	// Build candidate asset names
-	cands := map[string]struct{}{}
+	var cands []string
+	seen := map[string]bool{}
 	add := func(s string) {
 		s = strings.TrimSpace(s)
-		if s != "" {
-			cands[s] = struct{}{}
+		if s != "" && !seen[s] {
+			seen[s] = true
+			cands = append(cands, s)
 		}
 	}
 
@@ -1193,8 +1204,8 @@ func extractIPAIconFromAssetsCar(zr *zip.Reader, appDir string, m map[string]int
 	if err != nil {
 		return ""
 	}
-	// Try candidates; prefer order of insertion by iterating over keys deterministically
-	for name := range cands {
+	// Prefer plist names before common fallbacks.
+	for _, name := range cands {
 		if img, err := ac.Image(name); err == nil && img != nil {
 			var out bytes.Buffer
 			if err := png.Encode(&out, img); err == nil {
@@ -1209,20 +1220,27 @@ func extractIPAIconFromAssetsCar(zr *zip.Reader, appDir string, m map[string]int
 // Shared helpers
 // ------------------------------
 
+func decodeIconImage(b []byte) image.Image {
+	if len(b) > maxIconBytes {
+		return nil
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(b))
+	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width > 4096 || cfg.Height > 4096 {
+		return nil
+	}
+	img, _, _ := image.Decode(bytes.NewReader(b))
+	return img
+}
+
 func imageToBase64(b []byte) string {
 	// Try to decode and re-encode as a standard PNG
-	if img, _, err := image.Decode(bytes.NewReader(b)); err == nil {
+	if img := decodeIconImage(b); img != nil {
 		var out bytes.Buffer
 		if err := png.Encode(&out, img); err == nil {
 			return "data:image/png;base64," + base64.StdEncoding.EncodeToString(out.Bytes())
 		}
 	}
-	// Fallback: label with detected content-type (e.g., image/webp)
-	ct := http.DetectContentType(b)
-	if !strings.HasPrefix(ct, "image/") {
-		ct = "image/png"
-	}
-	return "data:" + ct + ";base64," + base64.StdEncoding.EncodeToString(b)
+	return ""
 }
 
 // ------------------------------
