@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"github.com/openprx/fenfa/internal/clientauth"
 	"github.com/openprx/fenfa/internal/config"
 	"github.com/openprx/fenfa/internal/store"
 )
@@ -78,6 +79,18 @@ func IOSManifest(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 
 		dl := fmt.Sprintf("%s/d/%s", base, rel.ID)
+		if access := clientauth.New(db, cfg.Auth.ClientPassword); access.Enabled() {
+			token := c.Query("access_token")
+			if !access.Valid(token, clientauth.DownloadScope, rel.ID) {
+				var err error
+				token, err = access.Issue(clientauth.DownloadScope, rel.ID, clientauth.DownloadLifetime)
+				if err != nil {
+					c.String(http.StatusInternalServerError, "failed to authorize download")
+					return
+				}
+			}
+			dl = clientauth.WithToken(dl, token)
+		}
 
 		ver := rel.Version
 		if rel.Build > 0 && ver != "" {

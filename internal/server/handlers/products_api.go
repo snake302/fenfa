@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"github.com/openprx/fenfa/internal/clientauth"
 	"github.com/openprx/fenfa/internal/config"
 	"github.com/openprx/fenfa/internal/store"
 )
@@ -48,9 +49,13 @@ func PublicProducts(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			if available == nil {
 				available = []string{}
 			}
+			iconURL := productIconURL(product, domains.Primary)
+			if cfg.Auth.ClientPassword != "" && iconURL != "" {
+				iconURL = "/icon/products/" + product.ID
+			}
 			items = append(items, gin.H{
 				"id": product.ID, "name": product.Name, "description": product.Description,
-				"icon_url": productIconURL(product, domains.Primary), "platforms": available,
+				"icon_url": iconURL, "platforms": available,
 				"url": "/products/" + url.PathEscape(productPathKey(product)),
 			})
 		}
@@ -109,6 +114,9 @@ func ProductDetailJSON(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		domains := resolvePublicDomains(c, db, cfg)
 		productKey := productPathKey(product)
 		iconURL := productIconURL(product, domains.Primary)
+		if cfg.Auth.ClientPassword != "" && iconURL != "" {
+			iconURL = "/icon/products/" + product.ID
+		}
 		var settings store.SystemSettings
 		db.Select("disable_bind_device").Where("id = ?", "default").First(&settings)
 
@@ -119,6 +127,10 @@ func ProductDetailJSON(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			var latest gin.H
 			for _, release := range releases {
 				releaseData := releasePayload(productKey, variant.Platform, domains, release)
+				if err := authorizeReleaseActions(db, cfg, release.ID, releaseData["actions"].(gin.H)); err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": gin.H{"code": "ACCESS_ERROR", "message": "failed to authorize download"}})
+					return
+				}
 				if profile, ok := profileMap[release.ID]; ok {
 					releaseData["provisioning_profile"] = formatProvisioningProfile(profile)
 				}
@@ -224,6 +236,26 @@ func releaseActions(productKey, platform string, domains publicDomains, releaseI
 		actions["ios_install"] = "itms-services://?action=download-manifest&url=" + url.QueryEscape(manifestURL)
 	}
 	return actions
+}
+
+func authorizeReleaseActions(db *gorm.DB, cfg *config.Config, releaseID string, actions gin.H) error {
+	access := clientauth.New(db, cfg.Auth.ClientPassword)
+	if !access.Enabled() {
+		return nil
+	}
+	token, err := access.Issue(clientauth.DownloadScope, releaseID, clientauth.DownloadLifetime)
+	if err != nil {
+		return err
+	}
+	for _, key := range []string{"download", "ios_manifest"} {
+		if rawURL, ok := actions[key].(string); ok {
+			actions[key] = clientauth.WithToken(rawURL, token)
+		}
+	}
+	if manifestURL, ok := actions["ios_manifest"].(string); ok {
+		actions["ios_install"] = "itms-services://?action=download-manifest&url=" + url.QueryEscape(manifestURL)
+	}
+	return nil
 }
 
 func resolvePublicDomains(c *gin.Context, db *gorm.DB, cfg *config.Config) publicDomains {

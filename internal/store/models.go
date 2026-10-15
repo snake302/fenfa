@@ -74,6 +74,14 @@ type AuthToken struct {
 	RevokedAt *time.Time `json:"revoked_at"`
 }
 
+// ClientAccessToken stores only a keyed hash of a client session or download grant.
+type ClientAccessToken struct {
+	TokenHash  string    `gorm:"primaryKey;size:64"`
+	Scope      string    `gorm:"size:16;not null"`
+	ResourceID string    `gorm:"size:64"`
+	ExpiresAt  time.Time `gorm:"index;not null"`
+}
+
 // Event logs uploads/downloads
 type Event struct {
 	ID        uint      `gorm:"primaryKey"`

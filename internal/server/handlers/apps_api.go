@@ -121,6 +121,9 @@ func AppDetailJSON(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		iconURL := ""
 		if app.IconPath != "" {
 			iconURL = primary + "/icon/" + app.ID
+			if cfg.Auth.ClientPassword != "" {
+				iconURL = "/icon/" + app.ID
+			}
 		}
 
 		if selected != nil {
@@ -130,6 +133,10 @@ func AppDetailJSON(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 				"ios_manifest": manifestURL,
 				"ios_install":  "itms-services://?action=download-manifest&url=" + url.QueryEscape(manifestURL),
 				"release_page": primary + "/apps/" + app.ID + "?r=" + selected.ID,
+			}
+			if err := authorizeReleaseActions(db, cfg, selected.ID, urls); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": gin.H{"code": "ACCESS_ERROR", "message": "failed to authorize download"}})
+				return
 			}
 		}
 		// Batch-load provisioning profiles for iOS apps
@@ -159,6 +166,10 @@ func AppDetailJSON(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 					"ios_install":  "itms-services://?action=download-manifest&url=" + url.QueryEscape(relManifestURL),
 					"release_page": primary + "/apps/" + app.ID + "?r=" + r.ID,
 				},
+			}
+			if err := authorizeReleaseActions(db, cfg, r.ID, relData["urls"].(gin.H)); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": gin.H{"code": "ACCESS_ERROR", "message": "failed to authorize download"}})
+				return
 			}
 			if p, ok := profileMap[r.ID]; ok {
 				relData["provisioning_profile"] = formatProvisioningProfile(p)

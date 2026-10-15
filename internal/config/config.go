@@ -19,8 +19,9 @@ type Config struct {
 		DevProxyAdmin    string   `json:"dev_proxy_admin"`
 	} `json:"server"`
 	Auth struct {
-		UploadTokens []string `json:"upload_tokens"`
-		AdminTokens  []string `json:"admin_tokens"`
+		UploadTokens   []string `json:"upload_tokens"`
+		AdminTokens    []string `json:"admin_tokens"`
+		ClientPassword string   `json:"client_password,omitempty"`
 	} `json:"auth"`
 }
 
@@ -76,6 +77,9 @@ func applyEnv(c *Config) {
 	}
 	if v := os.Getenv("FENFA_UPLOAD_TOKEN"); v != "" {
 		c.Auth.UploadTokens = []string{v}
+	}
+	if v, ok := os.LookupEnv("FENFA_CLIENT_PASSWORD"); ok {
+		c.Auth.ClientPassword = v
 	}
 }
 

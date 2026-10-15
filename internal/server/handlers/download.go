@@ -72,7 +72,11 @@ func Download(db *gorm.DB) gin.HandlerFunc {
 		ctype := contentTypeForExt(ext)
 		c.Header("Content-Type", ctype)
 		c.Header("Content-Disposition", "attachment; filename=\""+filepath.Base(rel.StoragePath)+"\"")
-		c.Header("Cache-Control", "no-transform")
+		cacheControl := c.Writer.Header().Get("Cache-Control")
+		if cacheControl != "" {
+			cacheControl += ", "
+		}
+		c.Header("Cache-Control", cacheControl+"no-transform")
 		_ = db.Model(&rel).UpdateColumn("download_count", gorm.Expr("download_count + 1")).Error
 		_ = db.Create(&store.Event{Type: "download", AppID: rel.AppID, VariantID: rel.VariantID, ReleaseID: rel.ID, IP: c.ClientIP(), UA: c.Request.UserAgent()}).Error
 

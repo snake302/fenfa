@@ -12,15 +12,19 @@ import (
 )
 
 func RegisterRoutes(g *gin.Engine, db *gorm.DB, cfg *config.Config) {
+	client := middleware.NewClientAccess(db, cfg)
+	g.GET("/api/client/session", client.Session)
+	g.POST("/api/client/login", client.Login)
+	g.POST("/api/client/logout", client.Logout)
 	// Static served in main, still ok to keep here if needed
 	g.GET("/healthz", handlers.Healthz(db))
 
-	// Public HTML + JSON
-	g.GET("/api/products", handlers.PublicProducts(db, cfg))
-	g.GET("/apps/:appID", func(c *gin.Context) {
+	// Client HTML and JSON, gated when a client password is configured.
+	g.GET("/api/products", client.RequireAPI(), handlers.PublicProducts(db, cfg))
+	g.GET("/apps/:appID", client.RequirePage(), func(c *gin.Context) {
 		handlers.LegacyAppRedirect(db)(c)
 	})
-	g.GET("/products/:productID", func(c *gin.Context) {
+	g.GET("/products/:productID", client.RequirePage(), func(c *gin.Context) {
 		if cfg.Server.DevProxyFront != "" {
 			target := cfg.Server.DevProxyFront + c.Request.URL.Path
 			if q := c.Request.URL.RawQuery; q != "" {
@@ -31,22 +35,22 @@ func RegisterRoutes(g *gin.Engine, db *gorm.DB, cfg *config.Config) {
 		}
 		handlers.ProductDetail(db)(c)
 	})
-	g.GET("/api/apps/:appID", handlers.AppDetailJSON(db, cfg))
-	g.GET("/api/products/:productID", handlers.ProductDetailJSON(db, cfg))
-	g.GET("/api/products/slug/:slug", handlers.ProductDetailJSON(db, cfg))
-	g.GET("/icon/:appID", handlers.AppIcon(db))
-	g.GET("/icon/products/:productID", handlers.ProductIcon(db))
+	g.GET("/api/apps/:appID", client.RequireAPI(), handlers.AppDetailJSON(db, cfg))
+	g.GET("/api/products/:productID", client.RequireAPI(), handlers.ProductDetailJSON(db, cfg))
+	g.GET("/api/products/slug/:slug", client.RequireAPI(), handlers.ProductDetailJSON(db, cfg))
+	g.GET("/icon/:appID", client.RequireAPI(), handlers.AppIcon(db))
+	g.GET("/icon/products/:productID", client.RequireAPI(), handlers.ProductIcon(db))
 
-	g.GET("/ios/:releaseID/manifest.plist", handlers.IOSManifest(db, cfg))
-	g.GET("/d/:releaseID", handlers.Download(db))
+	g.GET("/ios/:releaseID/manifest.plist", client.RequireDownload(), handlers.IOSManifest(db, cfg))
+	g.GET("/d/:releaseID", client.RequireDownload(), handlers.Download(db))
 
 	// Public event ingestion (client-side)
-	g.POST("/events", handlers.PostEvent(db))
+	g.POST("/events", client.RequireAPI(), handlers.PostEvent(db))
 
 	// UDID endpoints
-	g.GET("/udid/profile.mobileconfig", handlers.UDIDProfile(db, cfg))
-	g.POST("/udid/callback", handlers.UDIDCallback(db, cfg))
-	g.GET("/udid/status", handlers.UDIDStatus(db))
+	g.GET("/udid/profile.mobileconfig", client.RequirePage(), handlers.UDIDProfile(db, cfg))
+	g.POST("/udid/callback", client.RequireUDIDCallback(), handlers.UDIDCallback(db, cfg))
+	g.GET("/udid/status", client.RequireAPI(), handlers.UDIDStatus(db))
 
 	// Upload (auth required, with CORS for cross-domain uploads)
 	upload := g.Group("/")
@@ -84,17 +88,17 @@ func RegisterRoutes(g *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	// List apps
 	admin.GET("/api/apps", handlers.AdminListApps(db))
 	// Get single app with releases and provisioning profiles
-		admin.GET("/api/apps/:appID", handlers.AdminGetApp(db))
-		admin.GET("/api/products", handlers.AdminListProducts(db))
-		admin.POST("/api/products", handlers.AdminCreateProduct(db))
-		admin.GET("/api/products/:productID", handlers.AdminGetProduct(db))
-		admin.PUT("/api/products/:productID", handlers.AdminUpdateProduct(db))
-		admin.POST("/api/products/:productID/variants", handlers.AdminCreateVariant(db))
-		admin.GET("/api/variants/:variantID/stats", handlers.AdminGetVariantStats(db))
-		admin.PUT("/api/variants/:variantID", handlers.AdminUpdateVariant(db))
-		admin.DELETE("/api/products/:productID", handlers.AdminDeleteProduct(db))
-		admin.DELETE("/api/variants/:variantID", handlers.AdminDeleteVariant(db))
-		admin.DELETE("/api/releases/:releaseID", handlers.AdminDeleteRelease(db))
+	admin.GET("/api/apps/:appID", handlers.AdminGetApp(db))
+	admin.GET("/api/products", handlers.AdminListProducts(db))
+	admin.POST("/api/products", handlers.AdminCreateProduct(db))
+	admin.GET("/api/products/:productID", handlers.AdminGetProduct(db))
+	admin.PUT("/api/products/:productID", handlers.AdminUpdateProduct(db))
+	admin.POST("/api/products/:productID/variants", handlers.AdminCreateVariant(db))
+	admin.GET("/api/variants/:variantID/stats", handlers.AdminGetVariantStats(db))
+	admin.PUT("/api/variants/:variantID", handlers.AdminUpdateVariant(db))
+	admin.DELETE("/api/products/:productID", handlers.AdminDeleteProduct(db))
+	admin.DELETE("/api/variants/:variantID", handlers.AdminDeleteVariant(db))
+	admin.DELETE("/api/releases/:releaseID", handlers.AdminDeleteRelease(db))
 
 	// App publish/unpublish
 	admin.PUT("/api/apps/:appID/publish", handlers.PublishApp(db))
@@ -119,6 +123,8 @@ func RegisterRoutes(g *gin.Engine, db *gorm.DB, cfg *config.Config) {
 
 	// Client product catalog
 	g.GET("/", func(c *gin.Context) {
+		c.Header("Cache-Control", "private, no-store")
+		c.Header("Referrer-Policy", "no-referrer")
 		if cfg.Server.DevProxyFront != "" {
 			c.Redirect(http.StatusTemporaryRedirect, cfg.Server.DevProxyFront+"/")
 			return

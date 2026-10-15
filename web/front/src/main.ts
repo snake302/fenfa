@@ -170,6 +170,10 @@ const App = {
       const selectedReleaseID = new URLSearchParams(location.search).get('r')
       const endpoint = `/api/products/${resourceID}`
       const res = await fetch(endpoint + (selectedReleaseID ? `?r=${encodeURIComponent(selectedReleaseID)}` : ''))
+      if (res.status === 401) {
+        location.replace('/')
+        return
+      }
       const payload = await res.json()
 
       if (!res.ok || !payload.ok) {
@@ -294,8 +298,13 @@ const App = {
     }
 
     onMounted(async () => {
-      await fetchData()
-      await logVisit()
+      try {
+        await fetchData()
+        await logVisit()
+      } catch {
+        error.value = t.value.error.loadFailed
+        loading.value = false
+      }
     })
 
     return {

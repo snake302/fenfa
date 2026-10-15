@@ -7,6 +7,18 @@ function detectLanguage(): 'zh' | 'en' {
 const translations = {
   zh: {
     loading: '加载中...',
+    auth: {
+      title: '登录',
+      subtitle: '输入访问密码以查看和安装产品。',
+      password: '访问密码',
+      signIn: '登录',
+      signingIn: '登录中...',
+      logout: '退出登录',
+      invalidPassword: '密码错误，请重试。',
+      rateLimited: '尝试次数过多，请稍后重试。',
+      loginFailed: '无法登录，请重试。',
+      logoutFailed: '无法退出登录，请重试。'
+    },
     catalog: {
       title: '所有产品',
       subtitle: '选择产品以查看可用版本并安装到您的设备。',
@@ -53,6 +65,18 @@ const translations = {
   },
   en: {
     loading: 'Loading...',
+    auth: {
+      title: 'Sign in',
+      subtitle: 'Enter the access password to browse and install products.',
+      password: 'Access password',
+      signIn: 'Sign in',
+      signingIn: 'Signing in...',
+      logout: 'Sign out',
+      invalidPassword: 'Incorrect password. Please try again.',
+      rateLimited: 'Too many attempts. Please wait a minute and try again.',
+      loginFailed: 'Unable to sign in. Please try again.',
+      logoutFailed: 'Unable to sign out. Please try again.'
+    },
     catalog: {
       title: 'All products',
       subtitle: 'Choose a product to view available versions and install it on your device.',
