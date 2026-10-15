@@ -1,12 +1,52 @@
 package web
 
 import (
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
+	"html/template"
 	"io/fs"
 )
 
 //go:embed dist/front/* dist/admin/* templates/*
 var assets embed.FS
+
+var assetVersions = map[string]string{
+	"front": assetVersion("front"),
+	"admin": assetVersion("admin"),
+}
+
+// Version the entire bundle so changes to scripts, styles or chunks invalidate cached entry points.
+func assetVersion(bundle string) string {
+	hash := sha256.New()
+	err := fs.WalkDir(assets, "dist/"+bundle, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		data, err := assets.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		hash.Write([]byte(path + "\x00"))
+		hash.Write(data)
+		return nil
+	})
+	if err != nil {
+		panic(err)
+	}
+	return hex.EncodeToString(hash.Sum(nil))[:16]
+}
+
+func ParseTemplates() *template.Template {
+	return template.Must(template.New("").Funcs(template.FuncMap{
+		"assetURL": func(bundle, name string) string {
+			return "/static/" + bundle + "/" + name + "?v=" + assetVersions[bundle]
+		},
+	}).ParseFS(Templates(), "*.html"))
+}
 
 func Front() fs.FS {
 	sub, _ := fs.Sub(assets, "dist/front")
@@ -22,4 +62,3 @@ func Templates() fs.FS {
 	sub, _ := fs.Sub(assets, "templates")
 	return sub
 }
-

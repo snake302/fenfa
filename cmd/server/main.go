@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"html/template"
 	"log"
 	"net/http"
 	"os"
@@ -48,8 +47,7 @@ func main() {
 	g := gin.Default()
 
 	// Templates from embed FS
-	tmpl := template.Must(template.ParseFS(web.Templates(), "*.html"))
-	g.SetHTMLTemplate(tmpl)
+	g.SetHTMLTemplate(web.ParseTemplates())
 
 	// Static (embedded dist)
 	g.StaticFS("/static/front", http.FS(web.Front()))
@@ -59,10 +57,11 @@ func main() {
 	server.RegisterRoutes(g, db, cfg)
 
 	port := cfg.Server.Port
-	if port == "" { port = "8000" }
+	if port == "" {
+		port = "8000"
+	}
 	log.Printf("fenfa listening on :%s", port)
 	if err := g.Run(":" + port); err != nil {
 		log.Fatal(err)
 	}
 }
-

@@ -3,12 +3,12 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"html/template"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -26,7 +26,7 @@ import (
 func clientTestRouter(t *testing.T, db *gorm.DB, cfg *config.Config) *gin.Engine {
 	t.Helper()
 	g := gin.New()
-	g.SetHTMLTemplate(template.Must(template.ParseFS(web.Templates(), "*.html")))
+	g.SetHTMLTemplate(web.ParseTemplates())
 	RegisterRoutes(g, db, cfg)
 	return g
 }
@@ -333,5 +333,25 @@ func TestClientSessionCookieSecureBehindHTTPSProxy(t *testing.T) {
 	g.ServeHTTP(w, req)
 	if w.Code != http.StatusOK || len(w.Result().Cookies()) != 1 || !w.Result().Cookies()[0].Secure {
 		t.Fatalf("proxy login did not set a Secure cookie: %d", w.Code)
+	}
+}
+
+func TestClientPagesReferenceVersionedEmbeddedAssets(t *testing.T) {
+	g, _, _ := clientTestSetup(t, "test-client-password")
+	g.StaticFS("/static/front", http.FS(web.Front()))
+	g.StaticFS("/static/admin", http.FS(web.Admin()))
+	cookie := clientLogin(t, g)
+	pattern := regexp.MustCompile(`(?:src|href)="(/static/(?:front|admin)/(?:app\.js|style\.css)\?v=[a-f0-9]{16})"`)
+	for _, path := range []string{"/", "/products/client-product", "/admin"} {
+		w := clientRequest(g, "GET", path, "", cookie)
+		matches := pattern.FindAllStringSubmatch(w.Body.String(), -1)
+		if w.Code != http.StatusOK || len(matches) != 2 {
+			t.Fatalf("%s must reference versioned script and stylesheet: %d %s", path, w.Code, w.Body.String())
+		}
+		for _, match := range matches {
+			if asset := clientRequest(g, "GET", match[1], "", nil); asset.Code != http.StatusOK {
+				t.Fatalf("versioned login asset unavailable: %s returned %d", match[1], asset.Code)
+			}
+		}
 	}
 }
