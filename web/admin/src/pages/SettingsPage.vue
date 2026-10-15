@@ -50,6 +50,14 @@
           <p class="help-text">{{ t.settings.organizationHelp }}</p>
           <p v-if="errors.organization" class="error-text">{{ errors.organization }}</p>
         </div>
+
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input v-model="form.disableBindDevice" type="checkbox" aria-describedby="disable-bind-device-help">
+            <span>{{ t.settings.disableBindDevice }}</span>
+          </label>
+          <p id="disable-bind-device-help" class="help-text">{{ t.settings.disableBindDeviceHelp }}</p>
+        </div>
       </div>
 
       <!-- Storage Configuration -->
@@ -192,7 +200,8 @@ const lastUpdated = ref('')
 
 const form = reactive({
   primaryDomain: '',
-  organization: ''
+  organization: '',
+  disableBindDevice: false
 })
 
 const secondaryDomainsText = ref('')
@@ -250,6 +259,7 @@ async function loadSettings() {
     if (data.ok && data.data) {
       form.primaryDomain = data.data.primary_domain || ''
       form.organization = data.data.organization || ''
+      form.disableBindDevice = data.data.disable_bind_device === true
 
       if (data.data.secondary_domains && Array.isArray(data.data.secondary_domains)) {
         secondaryDomainsText.value = data.data.secondary_domains.join('\n')
@@ -317,6 +327,7 @@ async function handleSave() {
       primary_domain: form.primaryDomain,
       secondary_domains: secondaryDomains,
       organization: form.organization,
+      disable_bind_device: form.disableBindDevice,
       storage_type: storageForm.storageType,
       upload_domain: storageForm.uploadDomain,
     }
@@ -354,6 +365,7 @@ async function handleSave() {
     toast.success(t.value.settings.saveSuccess)
 
     if (data.data) {
+      form.disableBindDevice = data.data.disable_bind_device === true
       if (data.data.updated_at) {
         lastUpdated.value = new Date(data.data.updated_at).toLocaleString()
       }
@@ -487,6 +499,15 @@ onMounted(() => {
 .label.required::after {
   content: ' *';
   color: var(--red);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-bright);
+  font-size: 14px;
+  cursor: pointer;
 }
 
 .input {

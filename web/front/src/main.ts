@@ -44,6 +44,7 @@ interface ProductData {
     icon_url?: string
   }
   variants: VariantItem[]
+  disable_bind_device?: boolean
 }
 
 function detectClientPlatform(): Platform | '' {
@@ -75,6 +76,7 @@ const App = {
     const error = ref('')
     const installing = ref(false)
     const udidBound = reactive<Record<string, boolean>>({})
+    const disableBindDevice = computed(() => productData.value?.disable_bind_device === true)
     const selectedReleaseByVariant = reactive<Record<string, ReleaseItem | null>>({})
     const clientPlatform = detectClientPlatform()
     const pathParts = location.pathname.split('/').filter(Boolean)
@@ -103,10 +105,6 @@ const App = {
       selectedReleaseByVariant[variantID] = release
     }
 
-    function isIOSVariant(variant: VariantItem): boolean {
-      return variant.platform === 'ios'
-    }
-
     function isRecommended(variant: VariantItem): boolean {
       return !!clientPlatform && variant.platform === clientPlatform
     }
@@ -114,7 +112,7 @@ const App = {
     function getVariantAction(variant: VariantItem, release: ReleaseItem | null) {
       if (!release) return { type: 'disabled', href: '#', label: t.value.actions.unavailable }
       if (variant.platform === 'ios') {
-        if (udidBound[variant.id]) {
+        if (disableBindDevice.value || udidBound[variant.id]) {
           return {
             type: 'install',
             href: release.actions?.ios_install || '',
@@ -140,6 +138,7 @@ const App = {
     }
 
     async function fetchUDIDStatuses() {
+      if (disableBindDevice.value) return
       const variants = productData.value?.variants || []
       const iosVariants = variants.filter((variant) => variant.platform === 'ios')
       if (iosVariants.length === 0) return
@@ -315,7 +314,6 @@ const App = {
       getSelectedRelease,
       getVariantAction,
       handlePrimaryAction,
-      isIOSVariant,
       isRecommended,
       loading,
       platformLabel,
@@ -421,7 +419,7 @@ const App = {
             >
               {{ getVariantAction(variant, getSelectedRelease(variant)).label }}
             </button>
-            <p v-if="isIOSVariant(variant) && !udidBound[variant.id]" class="action-hint">
+            <p v-if="getVariantAction(variant, getSelectedRelease(variant)).type === 'bind'" class="action-hint">
               {{ t.variant.iosHint }}
             </p>
           </div>

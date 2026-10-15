@@ -117,11 +117,12 @@ type DeviceAppBinding struct {
 // SystemSettings stores global system configuration
 // This is a singleton table with only one row (ID = "default")
 type SystemSettings struct {
-	ID               string    `gorm:"primaryKey;size:64" json:"id"` // Always "default"
-	PrimaryDomain    string    `gorm:"size:255" json:"primary_domain"`
-	SecondaryDomains string    `gorm:"type:text" json:"secondary_domains"` // JSON array stored as text
-	Organization     string    `gorm:"size:255" json:"organization"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ID                string    `gorm:"primaryKey;size:64" json:"id"` // Always "default"
+	PrimaryDomain     string    `gorm:"size:255" json:"primary_domain"`
+	SecondaryDomains  string    `gorm:"type:text" json:"secondary_domains"` // JSON array stored as text
+	Organization      string    `gorm:"size:255" json:"organization"`
+	DisableBindDevice bool      `gorm:"not null;default:false" json:"disable_bind_device"`
+	UpdatedAt         time.Time `json:"updated_at"`
 
 	// Upload storage configuration
 	StorageType  string `gorm:"size:32;default:local" json:"storage_type"` // "local" | "s3"

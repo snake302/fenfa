@@ -371,6 +371,8 @@ export default {
     organization: '组织名称',
     organizationPlaceholder: '您的公司名称',
     organizationHelp: 'UDID 描述文件中显示的组织名称',
+    disableBindDevice: '禁用设备绑定',
+    disableBindDeviceHelp: '所有 iOS 应用直接显示安装按钮，无需通过 Fenfa 绑定设备。应用仍须具有适用于当前设备的有效签名。',
     bundleIdPrefix: 'Bundle ID 前缀',
     bundleIdPrefixPlaceholder: 'com.yourcompany.fenfa',
     bundleIdPrefixHelp: 'UDID 描述文件的 Bundle ID 前缀',

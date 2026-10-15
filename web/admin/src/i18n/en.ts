@@ -371,6 +371,8 @@ export default {
     organization: 'Organization',
     organizationPlaceholder: 'Your Company Name',
     organizationHelp: 'Organization name displayed in UDID profile',
+    disableBindDevice: 'Disable Bind Device',
+    disableBindDeviceHelp: 'Show Install directly for all iOS apps without requiring Fenfa device binding. The app must still be signed for your device.',
     bundleIdPrefix: 'Bundle ID Prefix',
     bundleIdPrefixPlaceholder: 'com.yourcompany.fenfa',
     bundleIdPrefixHelp: 'Bundle ID prefix for UDID profile',

@@ -65,6 +65,8 @@ func ProductDetailJSON(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		domains := resolvePublicDomains(c, db, cfg)
 		productKey := productPathKey(product)
 		iconURL := productIconURL(product, domains.Primary)
+		var settings store.SystemSettings
+		db.Select("disable_bind_device").Where("id = ?", "default").First(&settings)
 
 		items := make([]gin.H, 0, len(variants))
 		for _, variant := range variants {
@@ -106,7 +108,8 @@ func ProductDetailJSON(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 				"icon_url":  iconURL,
 				"published": product.Published,
 			},
-			"variants": items,
+			"variants":            items,
+			"disable_bind_device": settings.DisableBindDevice,
 		}})
 	}
 }
