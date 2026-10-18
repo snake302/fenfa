@@ -28,31 +28,45 @@ const translations = {
       title: '页面暂时不可用',
       loadFailed: '加载产品信息失败'
     },
-    hero: {
-      productCenter: '多平台分发中心',
-      legacyPage: '兼容分发页',
-      subtitle: '同一页面展示全部可用平台版本，按你的设备优先推荐最合适的下载项。',
-      recommended: '推荐'
-    },
     actions: {
       allProducts: '所有产品',
-      openProduct: '查看产品',
+      view: '查看',
       retry: '重试',
       install: '安装',
       installing: '正在安装...',
       download: '下载',
       bindDevice: '绑定设备',
-      scan: '扫码访问',
+      scan: '扫码安装',
       unavailable: '暂不可用'
     },
-    variant: {
-      identifier: '标识',
+    stats: {
+      date: '日期',
       version: '版本',
       build: '构建',
-      minOS: '最低系统',
-      updatedAt: '更新时间',
-      allVersions: '可用版本',
-      iosHint: 'iOS 首次安装前需要先绑定当前设备 UDID。'
+      size: '大小',
+      download: '下载',
+      requires: '要求',
+      format: '格式'
+    },
+    sections: {
+      whatsNew: '新内容',
+      previousBuilds: '历史构建',
+      otherBuilds: '其他构建',
+      information: '信息',
+      noChangelog: '此构建没有更新说明。'
+    },
+    info: {
+      identifier: '标识',
+      platform: '平台',
+      architecture: '架构',
+      channel: '渠道',
+      downloads: '下载次数'
+    },
+    variant: {
+      version: '版本',
+      iosHint: 'iOS 首次安装前需要先绑定当前设备 UDID。',
+      safariHint: '请在 Safari 中打开此页面以安装应用。',
+      iosFooter: '只有在签名 Apple 账号中注册过的设备才能安装 iOS 构建。'
     },
     time: {
       justNow: '刚刚',
@@ -86,31 +100,45 @@ const translations = {
       title: 'This page is temporarily unavailable',
       loadFailed: 'Failed to load product information'
     },
-    hero: {
-      productCenter: 'Multi-platform Distribution',
-      legacyPage: 'Compatibility Page',
-      subtitle: 'All platform builds live on one page, with a recommendation based on the current device.',
-      recommended: 'Recommended'
-    },
     actions: {
       allProducts: 'All products',
-      openProduct: 'Open product',
+      view: 'View',
       retry: 'Try again',
       install: 'Install',
       installing: 'Installing...',
       download: 'Download',
-      bindDevice: 'Bind Device',
-      scan: 'Scan QR Code',
+      bindDevice: 'Register Device',
+      scan: 'Scan to install',
       unavailable: 'Unavailable'
     },
-    variant: {
-      identifier: 'Identifier',
+    stats: {
+      date: 'Date',
       version: 'Version',
       build: 'Build',
-      minOS: 'Minimum OS',
-      updatedAt: 'Updated',
-      allVersions: 'Available Versions',
-      iosHint: 'On iOS, the device must be registered before the first install.'
+      size: 'Size',
+      download: 'download',
+      requires: 'Requires',
+      format: 'Format'
+    },
+    sections: {
+      whatsNew: "What's New",
+      previousBuilds: 'Previous builds',
+      otherBuilds: 'Other builds',
+      information: 'Information',
+      noChangelog: 'No release notes for this build.'
+    },
+    info: {
+      identifier: 'Identifier',
+      platform: 'Platform',
+      architecture: 'Architecture',
+      channel: 'Channel',
+      downloads: 'Downloads'
+    },
+    variant: {
+      version: 'Version',
+      iosHint: 'Register this iPhone once before the first install.',
+      safariHint: 'Open this page in Safari to install. Other browsers cannot install apps.',
+      iosFooter: 'iOS builds install only on devices registered to the signing Apple account.'
     },
     time: {
       justNow: 'Just now',

@@ -220,6 +220,7 @@ func releasePayload(productKey, platform string, domains publicDomains, release 
 		"channel":        release.Channel,
 		"min_os":         release.MinOS,
 		"changelog":      release.Changelog,
+		"size_bytes":     release.SizeBytes,
 		"actions":        releaseActions(productKey, platform, domains, release.ID),
 	}
 	return data

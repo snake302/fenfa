@@ -3,6 +3,7 @@ import QRCode from 'qrcode'
 import { useI18n } from './i18n'
 import HomePage from './HomePage'
 import { platformLabel } from './platform'
+import { defaultTint, icons, sampleIconTint } from './chrome'
 import './style.css'
 
 type Platform = 'ios' | 'android' | 'macos' | 'windows' | 'linux'
@@ -23,6 +24,7 @@ interface ReleaseItem {
   channel?: string
   min_os?: string
   changelog?: string
+  size_bytes?: number
   actions: ReleaseActions
 }
 
@@ -71,7 +73,9 @@ const App = {
     const selectedReleaseByVariant = reactive<Record<string, ReleaseItem | null>>({})
     const clientPlatform = detectClientPlatform()
     const pathParts = location.pathname.split('/').filter(Boolean)
-    const routeType = 'product'
+    const selectedVariantID = ref('')
+    const heroTint = ref(defaultTint)
+    const isIOSNonSafari = clientPlatform === 'ios' && /crios|fxios|edgios|opios|gsa\/|instagram|fban|fbav|line\/|micromessenger/i.test(navigator.userAgent)
     const resourceID = pathParts[1] || ''
     let refreshInFlight: Promise<void> | null = null
 
@@ -89,16 +93,29 @@ const App = {
       return sortedVariants.value.find((variant) => variant.platform === clientPlatform) || sortedVariants.value[0] || null
     })
 
+    const currentVariant = computed(() => {
+      return sortedVariants.value.find((variant) => variant.id === selectedVariantID.value) || recommendedVariant.value
+    })
+
+    const currentRelease = computed(() => currentVariant.value ? getSelectedRelease(currentVariant.value) : null)
+
+    const otherReleases = computed(() => {
+      const variant = currentVariant.value
+      if (!variant) return []
+      return variant.releases.filter((release) => release.id !== currentRelease.value?.id)
+    })
+
+    const showingLatest = computed(() => {
+      const variant = currentVariant.value
+      return !variant || currentRelease.value?.id === (variant.latest_release || variant.releases[0])?.id
+    })
+
+    function selectVariant(variant: VariantItem) {
+      selectedVariantID.value = variant.id
+    }
+
     function getSelectedRelease(variant: VariantItem): ReleaseItem | null {
       return selectedReleaseByVariant[variant.id] || variant.latest_release || variant.releases[0] || null
-    }
-
-    function selectRelease(variantID: string, release: ReleaseItem) {
-      selectedReleaseByVariant[variantID] = release
-    }
-
-    function isRecommended(variant: VariantItem): boolean {
-      return !!clientPlatform && variant.platform === clientPlatform
     }
 
     function getVariantAction(variant: VariantItem, release: ReleaseItem | null) {
@@ -183,9 +200,14 @@ const App = {
         return
       }
 
+      const previousIconURL = productData.value?.product.icon_url
       productData.value = payload.data as ProductData
       error.value = ''
       document.title = productData.value.product.name
+      const iconURL = productData.value.product.icon_url || ''
+      if (iconURL !== previousIconURL) {
+        sampleIconTint(iconURL).then((tint) => { heroTint.value = tint })
+      }
 
       for (const variant of productData.value.variants) {
         const preferredID = selectedReleaseByVariant[variant.id]?.id || selectedReleaseID
@@ -223,7 +245,7 @@ const App = {
       try {
         const canvas = document.getElementById('qrCanvas') as HTMLCanvasElement | null
         if (!canvas) return
-        await QRCode.toCanvas(canvas, location.href, { width: 148, margin: 1 })
+        await QRCode.toCanvas(canvas, location.href, { width: 132, margin: 1 })
       } catch (err) {
         console.warn('qr failed', err)
       }
@@ -283,8 +305,7 @@ const App = {
       })
     }
 
-    function handlePrimaryAction(variant: VariantItem) {
-      const release = getSelectedRelease(variant)
+    function handleAction(variant: VariantItem, release: ReleaseItem | null) {
       const action = getVariantAction(variant, release)
       if (!release || !action.href) return
       if (action.type === 'install') {
@@ -320,6 +341,43 @@ const App = {
       return date.toLocaleDateString()
     }
 
+    function locale() {
+      return getLanguage() === 'zh' ? 'zh-CN' : 'en-US'
+    }
+
+    function formatDay(dateStr: string) {
+      return new Date(dateStr).toLocaleDateString(locale(), { month: 'short', day: 'numeric' })
+    }
+
+    function formatClock(dateStr: string) {
+      return new Date(dateStr).toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' })
+    }
+
+    function formatFullDate(dateStr: string) {
+      return new Date(dateStr).toLocaleString(locale())
+    }
+
+    function formatSize(bytes?: number) {
+      if (!bytes || bytes <= 0) return ''
+      if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
+      if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+      return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+    }
+
+    function versionLabel(release: ReleaseItem) {
+      return release.build ? `${release.version} (${release.build})` : release.version
+    }
+
+    function packageFormat(variant: VariantItem) {
+      const defaults: Record<string, string> = { ios: 'IPA', android: 'APK' }
+      return (variant.installer_type || defaults[variant.platform] || '').toUpperCase()
+    }
+
+    function shortActionLabel(variant: VariantItem, release: ReleaseItem) {
+      const action = getVariantAction(variant, release)
+      return action.type === 'download' ? t.value.actions.download : t.value.actions.install
+    }
+
     onMounted(async () => {
       document.addEventListener('visibilitychange', handleVisibilityChange)
       window.addEventListener('pageshow', handlePageShow)
@@ -333,145 +391,183 @@ const App = {
     })
 
     return {
-      clientPlatform,
+      currentRelease,
+      currentVariant,
       error,
+      formatClock,
+      formatDay,
+      formatFullDate,
+      formatSize,
       formatTime,
-      getLanguage,
-      getSelectedRelease,
       getVariantAction,
-      handlePrimaryAction,
-      isRecommended,
+      handleAction,
+      heroTint,
+      icons,
+      isIOSNonSafari,
       loading,
+      otherReleases,
+      packageFormat,
       platformLabel,
       productData,
-      recommendedVariant,
-      routeType,
-      selectRelease,
+      selectVariant,
+      shortActionLabel,
+      showingLatest,
       sortedVariants,
       t,
-      udidBound
+      versionLabel
     }
   },
   template: /* html */ `
-  <div class="page-shell">
-    <div v-if="loading" class="state-panel">
-      <div class="spinner"></div>
-      <p>{{ t.loading }}</p>
-    </div>
+  <div class="sf-page">
+    <header class="sf-header">
+      <div class="sf-header-inner">
+        <a href="/" class="sf-round-button" :aria-label="t.actions.allProducts" :title="t.actions.allProducts" v-html="icons.back"></a>
+        <a href="/" class="sf-wordmark" aria-label="Fenfa"><span>fen</span><span>fa</span></a>
+        <span class="sf-header-spacer" aria-hidden="true"></span>
+      </div>
+    </header>
 
-    <div v-else-if="error" class="state-panel state-error">
+    <main v-if="loading" class="sf-main sf-state" role="status">
+      <div class="sf-spinner"></div>
+      <p>{{ t.loading }}</p>
+    </main>
+
+    <main v-else-if="error" class="sf-main sf-state" role="alert">
       <h1>{{ t.error.title }}</h1>
       <p>{{ error }}</p>
-    </div>
+    </main>
 
-    <div v-else-if="productData" class="product-page">
-      <a href="/" class="back-link">← {{ t.actions.allProducts }}</a>
-      <section class="hero-card">
-        <div class="hero-copy">
-          <div class="hero-kicker">{{ routeType === 'product' ? t.hero.productCenter : t.hero.legacyPage }}</div>
-          <h1 class="hero-title">{{ productData.product.name }}</h1>
-          <p class="hero-subtitle">{{ t.hero.subtitle }}</p>
-          <div class="hero-tags">
-            <span v-for="variant in sortedVariants" :key="variant.id" class="hero-tag">
-              {{ platformLabel(variant.platform) }}
-            </span>
-          </div>
-          <div v-if="recommendedVariant" class="hero-callout">
-            <span class="callout-label">{{ t.hero.recommended }}</span>
-            <strong>{{ platformLabel(recommendedVariant.platform) }}</strong>
-            <span v-if="recommendedVariant.latest_release">
-              · {{ recommendedVariant.latest_release.version }}
-            </span>
-          </div>
+    <main v-else-if="productData" class="sf-main">
+      <section class="sf-hero">
+        <div class="sf-hero-tint" aria-hidden="true" :style="{ background: heroTint }"></div>
+        <div class="sf-hero-identity">
+          <img v-if="productData.product.icon_url" :src="productData.product.icon_url" alt="" class="sf-app-icon" width="128" height="128" />
+          <div v-else class="sf-app-icon sf-app-icon-fallback" aria-hidden="true">{{ productData.product.name.slice(0, 1).toUpperCase() }}</div>
+          <h1 class="sf-app-name">{{ productData.product.name }}</h1>
         </div>
 
-        <div class="hero-side">
-          <div class="product-icon">
-            <img v-if="productData.product.icon_url" :src="productData.product.icon_url" alt="Product Icon" class="product-icon-image" />
-            <div v-else class="product-icon-fallback">{{ productData.product.name.slice(0, 1).toUpperCase() }}</div>
-          </div>
-          <div class="qr-card">
-            <p class="qr-title">{{ t.actions.scan }}</p>
-            <canvas id="qrCanvas" width="148" height="148"></canvas>
-          </div>
+        <div v-if="sortedVariants.length > 1" class="sf-platforms" role="tablist">
+          <button
+            v-for="variant in sortedVariants"
+            :key="variant.id"
+            type="button"
+            role="tab"
+            class="sf-platform"
+            :class="{ active: currentVariant?.id === variant.id }"
+            :aria-selected="currentVariant?.id === variant.id"
+            @click="selectVariant(variant)"
+          >{{ platformLabel(variant.platform) }}</button>
+        </div>
+
+        <div v-if="currentVariant" class="sf-hero-actions">
+          <button
+            type="button"
+            class="sf-glass-button"
+            :disabled="getVariantAction(currentVariant, currentRelease).type === 'disabled'"
+            @click="handleAction(currentVariant, currentRelease)"
+          >
+            <span v-html="getVariantAction(currentVariant, currentRelease).type === 'bind' ? icons.device : icons.download"></span>
+            {{ getVariantAction(currentVariant, currentRelease).label }}
+          </button>
+          <p v-if="getVariantAction(currentVariant, currentRelease).type === 'bind'" class="sf-hint">{{ t.variant.iosHint }}</p>
+          <p v-else-if="currentVariant.platform === 'ios' && isIOSNonSafari" class="sf-hint">{{ t.variant.safariHint }}</p>
         </div>
       </section>
 
-      <section class="variant-grid">
-        <article v-for="variant in sortedVariants" :key="variant.id" class="variant-card" :class="{ recommended: isRecommended(variant) }">
-          <header class="variant-header">
-            <div>
-              <div class="variant-title-row">
-                <h2 class="variant-title">{{ platformLabel(variant.platform) }}</h2>
-                <span v-if="isRecommended(variant)" class="recommended-badge">{{ t.hero.recommended }}</span>
+      <template v-if="currentVariant && currentRelease">
+        <div class="sf-stats-scroll">
+          <dl class="sf-stats">
+            <div class="sf-stat">
+              <dt>{{ t.stats.date }}</dt>
+              <dd>{{ formatDay(currentRelease.created_at) }}</dd>
+              <dd class="sf-stat-sub">{{ formatClock(currentRelease.created_at) }}</dd>
+            </div>
+            <div class="sf-stat">
+              <dt>{{ t.stats.version }}</dt>
+              <dd>{{ currentRelease.version }}</dd>
+              <dd class="sf-stat-sub">{{ currentRelease.build ? t.stats.build + ' ' + currentRelease.build : (currentRelease.channel || platformLabel(currentVariant.platform)) }}</dd>
+            </div>
+            <div v-if="formatSize(currentRelease.size_bytes)" class="sf-stat">
+              <dt>{{ t.stats.size }}</dt>
+              <dd>{{ formatSize(currentRelease.size_bytes) }}</dd>
+              <dd class="sf-stat-sub">{{ t.stats.download }}</dd>
+            </div>
+            <div v-if="currentRelease.min_os || currentVariant.min_os" class="sf-stat">
+              <dt>{{ t.stats.requires }}</dt>
+              <dd>{{ currentRelease.min_os || currentVariant.min_os }}</dd>
+              <dd class="sf-stat-sub">{{ platformLabel(currentVariant.platform) }}</dd>
+            </div>
+            <div v-if="packageFormat(currentVariant)" class="sf-stat">
+              <dt>{{ t.stats.format }}</dt>
+              <dd>{{ packageFormat(currentVariant) }}</dd>
+              <dd class="sf-stat-sub">{{ currentVariant.arch || platformLabel(currentVariant.platform) }}</dd>
+            </div>
+          </dl>
+        </div>
+
+        <section class="sf-section">
+          <h2>{{ t.sections.whatsNew }}</h2>
+          <p class="sf-when" :title="formatFullDate(currentRelease.created_at)">{{ formatTime(currentRelease.created_at) }}</p>
+          <p class="sf-build-title">{{ t.variant.version }} {{ versionLabel(currentRelease) }}</p>
+          <p v-if="currentRelease.changelog" class="sf-notes">{{ currentRelease.changelog }}</p>
+          <p v-else class="sf-notes sf-muted">{{ t.sections.noChangelog }}</p>
+        </section>
+
+        <section v-if="otherReleases.length" class="sf-section sf-section-builds">
+          <h2>{{ showingLatest ? t.sections.previousBuilds : t.sections.otherBuilds }}</h2>
+          <ul class="sf-builds">
+            <li v-for="release in otherReleases" :key="release.id" class="sf-build">
+              <div class="sf-build-head">
+                <div class="sf-build-heading">
+                  <p class="sf-build-meta"><span :title="formatFullDate(release.created_at)">{{ formatTime(release.created_at) }}</span><template v-if="release.build"> · {{ t.stats.build }} {{ release.build }}</template></p>
+                  <p class="sf-build-title">{{ t.variant.version }} {{ release.version }}</p>
+                </div>
+                <button type="button" class="sf-pill-button" @click="handleAction(currentVariant, release)">{{ shortActionLabel(currentVariant, release) }}</button>
               </div>
-              <p class="variant-name">{{ variant.display_name || productData.product.name }}</p>
-            </div>
-            <div class="variant-meta-badges">
-              <span v-if="variant.arch" class="meta-pill">{{ variant.arch }}</span>
-              <span v-if="variant.installer_type" class="meta-pill">{{ variant.installer_type }}</span>
-            </div>
-          </header>
+              <p v-if="release.changelog" class="sf-notes sf-notes-small">{{ release.changelog }}</p>
+              <p class="sf-build-footer">
+                <span v-if="release.channel">{{ release.channel }}</span>
+                <span>{{ release.id }}</span>
+                <span v-if="formatSize(release.size_bytes)">{{ formatSize(release.size_bytes) }}</span>
+              </p>
+            </li>
+          </ul>
+        </section>
 
-          <div class="variant-details">
-            <div class="detail-item">
-              <span class="detail-label">{{ t.variant.identifier }}</span>
-              <span class="detail-value code-text">{{ variant.identifier }}</span>
+        <section class="sf-section">
+          <h2>{{ t.sections.information }}</h2>
+          <dl class="sf-info">
+            <div class="sf-info-row">
+              <dt>{{ t.info.platform }}</dt>
+              <dd>{{ platformLabel(currentVariant.platform) }}</dd>
             </div>
-            <div v-if="getSelectedRelease(variant)?.version" class="detail-item">
-              <span class="detail-label">{{ t.variant.version }}</span>
-              <span class="detail-value">
-                {{ getSelectedRelease(variant)?.version }}
-                <template v-if="getSelectedRelease(variant)?.build">
-                  ({{ t.variant.build }} {{ getSelectedRelease(variant)?.build }})
-                </template>
-              </span>
+            <div class="sf-info-row">
+              <dt>{{ t.info.identifier }}</dt>
+              <dd class="sf-mono">{{ currentVariant.identifier }}</dd>
             </div>
-            <div v-if="getSelectedRelease(variant)?.min_os || variant.min_os" class="detail-item">
-              <span class="detail-label">{{ t.variant.minOS }}</span>
-              <span class="detail-value">{{ getSelectedRelease(variant)?.min_os || variant.min_os }}</span>
+            <div v-if="currentVariant.arch" class="sf-info-row">
+              <dt>{{ t.info.architecture }}</dt>
+              <dd>{{ currentVariant.arch }}</dd>
             </div>
-            <div v-if="getSelectedRelease(variant)?.created_at" class="detail-item">
-              <span class="detail-label">{{ t.variant.updatedAt }}</span>
-              <span class="detail-value">{{ formatTime(getSelectedRelease(variant)?.created_at || '') }}</span>
+            <div v-if="currentRelease.channel" class="sf-info-row">
+              <dt>{{ t.info.channel }}</dt>
+              <dd>{{ currentRelease.channel }}</dd>
             </div>
-          </div>
+            <div v-if="currentRelease.download_count" class="sf-info-row">
+              <dt>{{ t.info.downloads }}</dt>
+              <dd>{{ currentRelease.download_count }}</dd>
+            </div>
+          </dl>
+        </section>
+      </template>
 
-          <div class="variant-actions">
-            <button
-              class="primary-action"
-              :class="getVariantAction(variant, getSelectedRelease(variant)).type"
-              :disabled="getVariantAction(variant, getSelectedRelease(variant)).type === 'disabled'"
-              @click="handlePrimaryAction(variant)"
-            >
-              {{ getVariantAction(variant, getSelectedRelease(variant)).label }}
-            </button>
-            <p v-if="getVariantAction(variant, getSelectedRelease(variant)).type === 'bind'" class="action-hint">
-              {{ t.variant.iosHint }}
-            </p>
-          </div>
+      <p v-if="currentVariant?.platform === 'ios'" class="sf-footer-note">{{ t.variant.iosFooter }}</p>
+    </main>
 
-          <div v-if="getSelectedRelease(variant)?.changelog" class="changelog-box">
-            <div class="changelog-title">{{ getLanguage() === 'zh' ? '更新说明' : 'Changelog' }}</div>
-            <p>{{ getSelectedRelease(variant)?.changelog }}</p>
-          </div>
-
-          <div v-if="variant.releases.length > 0" class="release-list">
-            <div class="release-list-title">{{ t.variant.allVersions }}</div>
-            <button
-              v-for="release in variant.releases"
-              :key="release.id"
-              class="release-item"
-              :class="{ active: getSelectedRelease(variant)?.id === release.id }"
-              @click="selectRelease(variant.id, release)"
-            >
-              <span class="release-version">{{ release.version }}</span>
-              <span class="release-date">{{ formatTime(release.created_at) }}</span>
-            </button>
-          </div>
-        </article>
-      </section>
-    </div>
+    <aside v-if="productData && !loading && !error" class="sf-qr" aria-hidden="true">
+      <canvas id="qrCanvas" width="132" height="132"></canvas>
+      <span>{{ t.actions.scan }}</span>
+    </aside>
   </div>`
 }
 
