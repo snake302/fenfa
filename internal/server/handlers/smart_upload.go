@@ -59,6 +59,7 @@ func SmartUpload(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 		origPath := origTmp.Name()
+		defer os.Remove(origPath)
 
 		src, err := file.Open()
 		if err != nil {

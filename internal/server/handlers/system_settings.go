@@ -26,8 +26,9 @@ type SystemSettingsResponse struct {
 	UpdatedAt         string   `json:"updated_at"`
 
 	// Storage configuration
-	StorageType  string `json:"storage_type"`
-	UploadDomain string `json:"upload_domain,omitempty"`
+	StorageType         string `json:"storage_type"`
+	UploadDomain        string `json:"upload_domain,omitempty"`
+	MaxBuildsPerVariant int    `json:"max_builds_per_variant"`
 
 	// S3/R2 configuration (no secrets)
 	S3Configured bool   `json:"s3_configured"`
@@ -49,8 +50,9 @@ type SystemSettingsUpdateRequest struct {
 	DisableBindDevice *bool    `json:"disable_bind_device,omitempty"`
 
 	// Storage configuration (optional)
-	StorageType  *string `json:"storage_type,omitempty"`
-	UploadDomain *string `json:"upload_domain,omitempty"`
+	StorageType         *string `json:"storage_type,omitempty"`
+	UploadDomain        *string `json:"upload_domain,omitempty"`
+	MaxBuildsPerVariant *int    `json:"max_builds_per_variant,omitempty"`
 
 	// S3/R2 configuration (optional)
 	S3Endpoint  *string `json:"s3_endpoint,omitempty"`
@@ -102,20 +104,21 @@ func GetSystemSettings(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		response := SystemSettingsResponse{
-			PrimaryDomain:     settings.PrimaryDomain,
-			SecondaryDomains:  secondaryDomains,
-			Organization:      settings.Organization,
-			DisableBindDevice: settings.DisableBindDevice,
-			UpdatedAt:         settings.UpdatedAt.Format(time.RFC3339),
-			StorageType:       storageType,
-			UploadDomain:      settings.UploadDomain,
-			S3Configured:      s3Configured,
-			S3Endpoint:        settings.S3Endpoint,
-			S3Bucket:          settings.S3Bucket,
-			S3PublicURL:       settings.S3PublicURL,
-			AppleConfigured:   appleConfigured,
-			AppleKeyID:        settings.AppleKeyID,
-			AppleTeamID:       settings.AppleTeamID,
+			PrimaryDomain:       settings.PrimaryDomain,
+			SecondaryDomains:    secondaryDomains,
+			Organization:        settings.Organization,
+			DisableBindDevice:   settings.DisableBindDevice,
+			UpdatedAt:           settings.UpdatedAt.Format(time.RFC3339),
+			StorageType:         storageType,
+			UploadDomain:        settings.UploadDomain,
+			MaxBuildsPerVariant: settings.MaxBuildsPerVariant,
+			S3Configured:        s3Configured,
+			S3Endpoint:          settings.S3Endpoint,
+			S3Bucket:            settings.S3Bucket,
+			S3PublicURL:         settings.S3PublicURL,
+			AppleConfigured:     appleConfigured,
+			AppleKeyID:          settings.AppleKeyID,
+			AppleTeamID:         settings.AppleTeamID,
 		}
 
 		c.JSON(http.StatusOK, gin.H{
@@ -137,6 +140,13 @@ func UpdateSystemSettings(db *gorm.DB) gin.HandlerFunc {
 					"message": "Invalid request body",
 				},
 			})
+			return
+		}
+
+		if req.MaxBuildsPerVariant != nil && *req.MaxBuildsPerVariant < 1 {
+			c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": gin.H{
+				"code": "INVALID_REQUEST", "message": "Max builds per variant must be a positive integer",
+			}})
 			return
 		}
 
@@ -204,6 +214,9 @@ func UpdateSystemSettings(db *gorm.DB) gin.HandlerFunc {
 			if req.DisableBindDevice != nil {
 				settings.DisableBindDevice = *req.DisableBindDevice
 			}
+			if req.MaxBuildsPerVariant != nil {
+				settings.MaxBuildsPerVariant = *req.MaxBuildsPerVariant
+			}
 			if req.StorageType != nil {
 				settings.StorageType = *req.StorageType
 			}
@@ -254,6 +267,9 @@ func UpdateSystemSettings(db *gorm.DB) gin.HandlerFunc {
 			}
 			if req.DisableBindDevice != nil {
 				updates["disable_bind_device"] = *req.DisableBindDevice
+			}
+			if req.MaxBuildsPerVariant != nil {
+				updates["max_builds_per_variant"] = *req.MaxBuildsPerVariant
 			}
 			// Only update storage fields if provided
 			if req.StorageType != nil {
@@ -326,20 +342,21 @@ func UpdateSystemSettings(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		response := SystemSettingsResponse{
-			PrimaryDomain:     settings.PrimaryDomain,
-			SecondaryDomains:  updatedSecondaryDomains,
-			Organization:      settings.Organization,
-			DisableBindDevice: settings.DisableBindDevice,
-			UpdatedAt:         settings.UpdatedAt.Format(time.RFC3339),
-			StorageType:       storageType,
-			UploadDomain:      settings.UploadDomain,
-			S3Configured:      s3Configured,
-			S3Endpoint:        settings.S3Endpoint,
-			S3Bucket:          settings.S3Bucket,
-			S3PublicURL:       settings.S3PublicURL,
-			AppleConfigured:   appleConfigured,
-			AppleKeyID:        settings.AppleKeyID,
-			AppleTeamID:       settings.AppleTeamID,
+			PrimaryDomain:       settings.PrimaryDomain,
+			SecondaryDomains:    updatedSecondaryDomains,
+			Organization:        settings.Organization,
+			DisableBindDevice:   settings.DisableBindDevice,
+			UpdatedAt:           settings.UpdatedAt.Format(time.RFC3339),
+			StorageType:         storageType,
+			UploadDomain:        settings.UploadDomain,
+			MaxBuildsPerVariant: settings.MaxBuildsPerVariant,
+			S3Configured:        s3Configured,
+			S3Endpoint:          settings.S3Endpoint,
+			S3Bucket:            settings.S3Bucket,
+			S3PublicURL:         settings.S3PublicURL,
+			AppleConfigured:     appleConfigured,
+			AppleKeyID:          settings.AppleKeyID,
+			AppleTeamID:         settings.AppleTeamID,
 		}
 
 		c.JSON(http.StatusOK, gin.H{

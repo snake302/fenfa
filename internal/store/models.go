@@ -133,8 +133,9 @@ type SystemSettings struct {
 	UpdatedAt         time.Time `json:"updated_at"`
 
 	// Upload storage configuration
-	StorageType  string `gorm:"size:32;default:local" json:"storage_type"` // "local" | "s3"
-	UploadDomain string `gorm:"size:255" json:"upload_domain"`             // Subdomain for uploads (bypasses CDN limits)
+	StorageType         string `gorm:"size:32;default:local" json:"storage_type"` // "local" | "s3"
+	UploadDomain        string `gorm:"size:255" json:"upload_domain"`             // Subdomain for uploads (bypasses CDN limits)
+	MaxBuildsPerVariant int    `gorm:"not null;default:50" json:"max_builds_per_variant"`
 
 	// S3/R2 configuration
 	S3Endpoint  string `gorm:"size:255" json:"-"`

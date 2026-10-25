@@ -3,6 +3,7 @@ package handlers
 import (
 	"archive/zip"
 	bytes "bytes"
+	"context"
 	crand "crypto/rand"
 	"crypto/sha1"
 	"crypto/sha256"
@@ -99,6 +100,19 @@ func Upload(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 // doUpload is the shared upload logic used by both Upload and SmartUpload.
 func doUpload(c *gin.Context, db *gorm.DB, cfg *config.Config, file *multipart.FileHeader, p uploadParams) {
+	unlock := lockVariantUploads(p.VariantID)
+	defer unlock()
+
+	var settings store.SystemSettings
+	if err := db.Where("id = ?", "default").First(&settings).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": gin.H{"code": "DB", "message": err.Error()}})
+		return
+	}
+	storageType := settings.StorageType
+	if storageType == "" {
+		storageType = "local"
+	}
+
 	platform := p.Platform
 	version := p.Version
 	build := p.Build
@@ -133,6 +147,20 @@ func doUpload(c *gin.Context, db *gorm.DB, cfg *config.Config, file *multipart.F
 		filename = p.Filename
 	}
 	destPath := filepath.Join(appDir, filename)
+	committed := false
+	defer func() {
+		if !committed {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			failedRelease := release
+			if failedRelease.StoragePath == "" {
+				failedRelease.StoragePath = destPath
+			}
+			if err := removeReleaseFiles(cleanupCtx, settings, failedRelease); err != nil {
+				log.Printf("[upload] WARN: failed to clean up unsuccessful upload %s: %v", release.ID, err)
+			}
+		}
+	}()
 
 	if p.SavedFilePath != "" {
 		// File already saved (SmartUpload flow): move to final location
@@ -183,9 +211,13 @@ func doUpload(c *gin.Context, db *gorm.DB, cfg *config.Config, file *multipart.F
 			c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": gin.H{"code": "IO", "message": err.Error()}})
 			return
 		}
-		defer dest.Close()
 		h := sha256.New()
 		if _, err := io.Copy(dest, io.TeeReader(reader, h)); err != nil {
+			_ = dest.Close()
+			c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": gin.H{"code": "IO", "message": err.Error()}})
+			return
+		}
+		if err := dest.Close(); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": gin.H{"code": "IO", "message": err.Error()}})
 			return
 		}
@@ -197,21 +229,6 @@ func doUpload(c *gin.Context, db *gorm.DB, cfg *config.Config, file *multipart.F
 	}
 	release.FileName = filename
 	release.StoragePath = filepath.ToSlash(filepath.Join("uploads", p.ProductID, p.VariantID, release.ID, filename))
-
-	// Check storage type from system settings
-	var settings store.SystemSettings
-	db.Where("id = ?", "default").First(&settings)
-	storageType := settings.StorageType
-	if storageType == "" {
-		storageType = "local"
-	}
-
-	// For iOS: extract and save provisioning profile (before S3 upload, needs local file)
-	if platform == "ios" {
-		go func(releaseID, storagePath string) {
-			saveProvisioningProfile(db, releaseID, storagePath)
-		}(release.ID, destPath)
-	}
 
 	// If S3 mode, upload file to S3/R2
 	if storageType == "s3" && settings.S3Endpoint != "" && settings.S3Bucket != "" && settings.S3AccessKey != "" && settings.S3SecretKey != "" {
@@ -236,8 +253,14 @@ func doUpload(c *gin.Context, db *gorm.DB, cfg *config.Config, file *multipart.F
 		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": gin.H{"code": "DB", "message": err.Error()}})
 		return
 	}
+	committed = true
 	// Extract icons only after the build has been stored successfully.
 	saveUploadIcon(db, p, destPath)
+	// Finish profile extraction before retention or S3 staging cleanup can remove
+	// the file, and before another upload can delete this release's records.
+	if platform == "ios" {
+		saveProvisioningProfile(db, release.ID, destPath)
+	}
 	_ = db.Create(&store.Event{Type: "upload", AppID: p.LegacyAppID, VariantID: p.VariantID, ReleaseID: release.ID, IP: c.ClientIP(), UA: c.Request.UserAgent()}).Error
 
 	// meta.json snapshot (local storage only)
@@ -254,6 +277,17 @@ func doUpload(c *gin.Context, db *gorm.DB, cfg *config.Config, file *multipart.F
 			_ = json.NewEncoder(mf).Encode(meta)
 			_ = mf.Close()
 		}
+	}
+	if strings.HasPrefix(release.StoragePath, "s3://") {
+		if err := removeLocalReleaseFiles(destPath, release.ID); err != nil {
+			log.Printf("[upload] WARN: failed to remove S3 staging files for %s: %v", release.ID, err)
+		}
+	}
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), 30*time.Second)
+	defer cancel()
+	if err := enforceBuildRetention(cleanupCtx, db, settings, p.VariantID, release.ID); err != nil {
+		// The new upload succeeded. Retain failed cleanup records for the next upload.
+		log.Printf("[retention] WARN: variant %s cleanup failed: %v", p.VariantID, err)
 	}
 
 	// Determine domains (prefer DB settings; fall back to config/request)

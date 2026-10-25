@@ -66,6 +66,22 @@
         <p class="card-subtitle">{{ t.storage.subtitle }}</p>
 
         <div class="form-group">
+          <label for="max-builds-per-variant" class="label required">{{ t.storage.maxBuildsPerVariant }}</label>
+          <input
+            id="max-builds-per-variant"
+            v-model.number="storageForm.maxBuildsPerVariant"
+            type="number"
+            min="1"
+            step="1"
+            class="input"
+            aria-describedby="build-retention-help"
+            required
+          >
+          <p id="build-retention-help" class="help-text">{{ t.storage.maxBuildsPerVariantHelp }}</p>
+          <p v-if="errors.maxBuildsPerVariant" class="error-text">{{ errors.maxBuildsPerVariant }}</p>
+        </div>
+
+        <div class="form-group">
           <label class="label">{{ t.storage.storageType }}</label>
           <div class="radio-group">
             <label class="radio-label" :class="{ active: storageForm.storageType === 'local' }">
@@ -208,10 +224,12 @@ const secondaryDomainsText = ref('')
 
 const errors = reactive({
   primaryDomain: '',
-  organization: ''
+  organization: '',
+  maxBuildsPerVariant: ''
 })
 
 const storageForm = reactive({
+  maxBuildsPerVariant: 50,
   storageType: 'local',
   uploadDomain: '',
   s3Endpoint: '',
@@ -270,6 +288,7 @@ async function loadSettings() {
       }
 
       storageForm.storageType = data.data.storage_type || 'local'
+      storageForm.maxBuildsPerVariant = data.data.max_builds_per_variant ?? 50
       storageForm.uploadDomain = data.data.upload_domain || ''
       storageForm.s3Endpoint = data.data.s3_endpoint || ''
       storageForm.s3Bucket = data.data.s3_bucket || ''
@@ -295,6 +314,7 @@ async function loadSettings() {
 function validateForm(): boolean {
   errors.primaryDomain = ''
   errors.organization = ''
+  errors.maxBuildsPerVariant = ''
   let isValid = true
 
   if (!form.primaryDomain) {
@@ -307,6 +327,11 @@ function validateForm(): boolean {
 
   if (!form.organization) {
     errors.organization = t.value.settings.requiredField
+    isValid = false
+  }
+
+  if (!Number.isInteger(storageForm.maxBuildsPerVariant) || storageForm.maxBuildsPerVariant < 1) {
+    errors.maxBuildsPerVariant = t.value.storage.invalidBuildLimit
     isValid = false
   }
 
@@ -329,6 +354,7 @@ async function handleSave() {
       organization: form.organization,
       disable_bind_device: form.disableBindDevice,
       storage_type: storageForm.storageType,
+      max_builds_per_variant: storageForm.maxBuildsPerVariant,
       upload_domain: storageForm.uploadDomain,
     }
 
@@ -370,6 +396,7 @@ async function handleSave() {
         lastUpdated.value = new Date(data.data.updated_at).toLocaleString()
       }
       storageForm.storageType = data.data.storage_type || 'local'
+      storageForm.maxBuildsPerVariant = data.data.max_builds_per_variant ?? 50
       storageForm.uploadDomain = data.data.upload_domain || ''
       storageForm.s3Endpoint = data.data.s3_endpoint || ''
       storageForm.s3Bucket = data.data.s3_bucket || ''

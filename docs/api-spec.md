@@ -164,6 +164,21 @@ GET /admin/api/apple/status                             # Check Apple API status
 GET /admin/api/apple/devices                            # List Apple-registered devices
 ```
 
+`GET /admin/api/settings` returns `max_builds_per_variant` (default: `50`).
+`PUT /admin/api/settings` accepts this optional positive integer; omitting it or sending `null` preserves the current value. Zero, negative numbers, fractions, strings, booleans, and arrays are rejected with HTTP 400. Existing required fields (`primary_domain` and `organization`) still apply:
+
+```json
+{
+  "primary_domain": "https://dist.example.com",
+  "organization": "Your Company Name",
+  "max_builds_per_variant": 50
+}
+```
+
+The limit applies independently to every target (variant), across all versions and channels. After each successful `/upload` or `/smart-upload`, the new build and the latest N−1 previous uploads are retained, ordered by `created_at` descending and then release ID descending. Changing the setting takes effect on each target's next successful upload; failed uploads do not trigger cleanup.
+
+Cleanup removes older release files (including S3/R2 objects and local copies), `meta.json`, release records, provisioning profiles, release events, and download grants. S3 credentials require object deletion permission (`s3:DeleteObject`); noncurrent versions in versioned buckets follow the bucket's own policy. Cleanup errors are logged and retried on a later upload without failing the successful upload. Pre-existing orphaned files are outside the scope of this cleanup.
+
 ### Export
 
 ```

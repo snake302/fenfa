@@ -25,6 +25,7 @@ Part of the [OpenPRX](https://github.com/openprx) ecosystem — open-source infr
 - **Product pages** — public download pages with QR codes and platform detection
 - **Admin panel** — manage products, variants, releases, devices, and settings
 - **S3/R2 storage** — optional S3-compatible object storage (Cloudflare R2, AWS S3, MinIO)
+- **Build retention** — keep the latest N builds per target, with automatic cleanup after uploads (default: 50)
 - **Apple Developer API** — auto-register devices to your Apple Developer account
 - **Single binary** — Go binary with embedded frontend, just run it
 - **SQLite** — zero external dependencies, data in a single file
@@ -110,6 +111,12 @@ Override config values without a file:
 ### Storage
 
 Files are stored locally by default. S3-compatible storage (R2, AWS S3, MinIO) can be configured in admin panel > Settings > Storage.
+
+The same settings section includes **Builds to keep per target**, a positive integer that defaults to **50**, including on existing installations. The limit applies separately to each target (variant), across all versions and channels. After a successful `/upload` or `/smart-upload`, Fenfa keeps the new build and the latest N−1 previous uploads by upload time, using release ID to break timestamp ties. Build numbers do not affect retention.
+
+Older builds are permanently deleted together with their files, local `meta.json`, provisioning profiles, release events, and download grants. S3/R2 cleanup deletes the object and any local copy left by older uploads; new S3 uploads discard their local staging files after metadata extraction. The storage credentials must allow object deletion (`s3:DeleteObject`). With bucket versioning enabled, deleting an object may retain older object versions according to the bucket policy.
+
+Saving a different limit does not immediately delete existing builds. Each target is cleaned up on its next successful upload. Failed uploads do not trigger retention. Cleanup failures are logged without failing the new upload; affected build records remain for retry on the next upload, so storage errors can temporarily leave more than N builds. Files and objects already orphaned by earlier versions are not discovered by this policy.
 
 ## Architecture
 
